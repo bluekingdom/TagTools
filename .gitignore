@@ -6,3 +6,5 @@ x86
 *.suo
 ipch
 *.opensdf
+*.zip
+testImgs

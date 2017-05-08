@@ -72,16 +72,16 @@
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <LinkIncremental>true</LinkIncremental>
-    <IncludePath>D:\blue\codes\TagTools\ProcessRectTxt;D:\blue\sdks\opencv_3_1_0\build\include;D:\blue\sdks\boost_1_64_0;$(VC_IncludePath);$(WindowsSDK_IncludePath)</IncludePath>
-    <LibraryPath>D:\blue\sdks\opencv_3_1_0\build\x64\vc12\lib;D:\blue\sdks\boost_1_64_0\lib64-msvc-12.0;$(VC_LibraryPath_x64);$(WindowsSDK_LibraryPath_x64);</LibraryPath>
+    <IncludePath>C:\blue\sdk\opencv_3_1_0\build\include;C:\blue\sdk\boost_1_64_0;$(ProjectDir);D:\blue\sdks\opencv_3_1_0\build\include;D:\blue\sdks\boost_1_64_0;$(VC_IncludePath);$(WindowsSDK_IncludePath)</IncludePath>
+    <LibraryPath>C:\blue\sdk\opencv_3_1_0\build\x64\vc12\lib;C:\blue\sdk\boost_1_64_0\lib64-msvc-12.0;D:\blue\sdks\opencv_3_1_0\build\x64\vc12\lib;D:\blue\sdks\boost_1_64_0\lib64-msvc-12.0;$(VC_LibraryPath_x64);$(WindowsSDK_LibraryPath_x64)</LibraryPath>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
     <LinkIncremental>false</LinkIncremental>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <LinkIncremental>false</LinkIncremental>
-    <IncludePath>D:\blue\codes\TagTools\ProcessRectTxt;D:\blue\sdks\opencv_3_1_0\build\include;D:\blue\sdks\boost_1_64_0;$(VC_IncludePath);$(WindowsSDK_IncludePath)</IncludePath>
-    <LibraryPath>D:\blue\sdks\opencv_3_1_0\build\x64\vc12\lib;D:\blue\sdks\boost_1_64_0\lib64-msvc-12.0;$(VC_LibraryPath_x64);$(WindowsSDK_LibraryPath_x64);</LibraryPath>
+    <IncludePath>C:\blue\sdk\opencv_3_1_0\build\include;C:\blue\sdk\boost_1_64_0;$(ProjectDir);D:\blue\sdks\opencv_3_1_0\build\include;D:\blue\sdks\boost_1_64_0;$(VC_IncludePath);$(WindowsSDK_IncludePath)</IncludePath>
+    <LibraryPath>C:\blue\sdk\opencv_3_1_0\build\x64\vc12\lib;C:\blue\sdk\boost_1_64_0\lib64-msvc-12.0;D:\blue\sdks\opencv_3_1_0\build\x64\vc12\lib;D:\blue\sdks\boost_1_64_0\lib64-msvc-12.0;$(VC_LibraryPath_x64);$(WindowsSDK_LibraryPath_x64)</LibraryPath>
   </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
     <ClCompile>

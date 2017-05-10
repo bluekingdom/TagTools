@@ -9,3 +9,6 @@ ipch
 *.zip
 testImgs
 TagTools/RectTxt
+*.psess
+ProcessRectTxt/testImgs
+*.vspx

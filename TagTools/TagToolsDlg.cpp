@@ -81,6 +81,8 @@ BEGIN_MESSAGE_MAP(CTagToolsDlg, CDialogEx)
 	ON_BN_CLICKED(IDC_BUTTON_DEL, &CTagToolsDlg::OnBnClickedButtonDel)
 	ON_WM_CLOSE()
 	ON_WM_KEYUP()
+	ON_WM_CHAR()
+	ON_WM_MOUSEMOVE()
 END_MESSAGE_MAP()
 
 
@@ -188,9 +190,17 @@ void CTagToolsDlg::OnBnClickedButton1()
 
 	if (LoadMatFromRoot(FilePathName.GetString()))
 	{
+		RefreshTagged();
 		RefreshListBox();
-		((CListBox*)GetDlgItem(IDC_LIST_FILELIST))->SetCurSel(0);
-		OnLbnSelchangeListFilelist();
+		for (int i = m_vTagged.size() - 1; i >= 0; i--)
+		{
+			if (true == m_vTagged[i])
+			{
+				m_nCurFileIdx = std::min(int(m_vTagged.size()) - 1, i + 1);
+				break;
+			}
+		}
+		PostChangeSel();
 	}
 	else {
 		return;
@@ -268,29 +278,13 @@ void CTagToolsDlg::RefreshListBox()
 void CTagToolsDlg::OnLbnSelchangeListFilelist()
 {
 	// TODO:  在此添加控件通知处理程序代码
-	if (true == SaveRect2Txt())
-		m_vTagged[m_nCurFileIdx] = true;
 
-	RefreshCurListString();
+	PreChangeSel();
 
 	CListBox* listbox = (CListBox*)GetDlgItem(IDC_LIST_FILELIST);
 	m_nCurFileIdx = listbox->GetCurSel();
 
-	ResetRectInfo();
-
-	ShowCurSelImg();
-
-	if (LoadExistTxt())
-	{
-		m_vTagged[m_nCurFileIdx] = true;
-		RefreshCurListString();
-	}
-
-	listbox->SetCurSel(m_nCurFileIdx);
-
-	RefreshRectList();
-
-	Redraw();
+	PostChangeSel();
 }
 
 bool CTagToolsDlg::ShowCurSelImg()
@@ -454,6 +448,10 @@ void CTagToolsDlg::OnLButtonDown(UINT nFlags, CPoint point)
 {
 	// TODO:  在此添加消息处理程序代码和/或调用默认值
 
+	m_pBegPt = point;
+	m_bIsLBPushing = true;
+	m_bIsMouseMoving = false;
+
 	CDialogEx::OnLButtonDown(nFlags, point);
 }
 
@@ -461,23 +459,54 @@ void CTagToolsDlg::OnLButtonUp(UINT nFlags, CPoint point)
 {
 	// TODO:  在此添加消息处理程序代码和/或调用默认值
 
+
 	if (m_mResizeImg.empty())
 	{
 		MessageBox("请先点击图片列表!");
+		m_bIsLBPushing = false;
+		m_bIsMouseMoving = false;
 		return;
 	}
 
-	AddClickPoint(point);
+	if (false == m_bIsMouseMoving)
+	{
+		AddClickPoint(point);
+	}
+	else {
+		AddRect(m_pBegPt, m_pCurPt);
+	}
 
-	cv::Mat drawImg = m_mResizeImg.clone();
-	DrawClickPoints(drawImg);
+	m_bIsLBPushing = false;
+	m_bIsMouseMoving = false;
 
-	ShowImg(drawImg);
+	RefreshRectList();
+	Redraw();
+
+	//cv::Mat drawImg = m_mResizeImg.clone();
+	//DrawClickPoints(drawImg);
+
+	//ShowImg(drawImg);
 
 	CDialogEx::OnLButtonUp(nFlags, point);
 }
 
-void CTagToolsDlg::DrawClickPoints(cv::Mat& srcImg)
+void CTagToolsDlg::OnMouseMove(UINT nFlags, CPoint point)
+{
+	// TODO:  在此添加消息处理程序代码和/或调用默认值
+
+	m_pCurPt = point;
+	if (m_bIsLBPushing)
+	{
+		cv::Rect rect(m_pBegPt.x, m_pBegPt.y, m_pCurPt.x - m_pBegPt.x, m_pCurPt.y - m_pBegPt.y);
+		if (rect.area() > 400)
+			m_bIsMouseMoving = true;
+		Redraw();
+	}
+
+	CDialogEx::OnMouseMove(nFlags, point);
+}
+
+void CTagToolsDlg::DrawClickPoints(cv::Mat& srcImg, int id_offset)
 {
 	for (const auto& point : m_vClickPoints)
 	{
@@ -505,7 +534,7 @@ void CTagToolsDlg::DrawClickPoints(cv::Mat& srcImg)
 	for (int i = 0; i < nPtVecLen; i++)
 	{
 		ss.str("");
-		ss << i;
+		ss << i + id_offset;
 		const auto& vPts = m_vPointVecs[i];
 		auto rect = GetRect(vPts);
 		cv::putText(srcImg, ss.str(), cv::Point(rect.x, rect.y - 2), 1, 1, cv::Scalar(255, 255, 255));
@@ -540,9 +569,13 @@ void CAboutDlg::OnRButtonUp(UINT nFlags, CPoint point)
 void CTagToolsDlg::OnRButtonUp(UINT nFlags, CPoint point)
 {
 	// TODO:  在此添加消息处理程序代码和/或调用默认值
-	m_vClickPoints.clear();
+	if (m_vClickPoints.size() > 0)
+	{
+		m_vClickPoints.erase(m_vClickPoints.end() - 1);
+	}
 
-	ShowImg(m_mResizeImg.clone());
+	//ShowImg(m_mResizeImg.clone());
+	Redraw();
 
 	CDialogEx::OnRButtonUp(nFlags, point);
 }
@@ -580,31 +613,43 @@ void CTagToolsDlg::RefreshRectList()
 
 	listbox->ResetContent();
 
-	int nPtVecLen = m_vPointVecs.size();
+	int nRectLen = m_vRects.size();
 
-	for (int i = 0; i < nPtVecLen; i++)
+	for (int i = 0; i < nRectLen; i++)
 	{
 		CString line;
 		line.Format("区域: %d", i);
 		listbox->InsertString(i, line);
 	}
+
+	int nPtVecLen = m_vPointVecs.size();
+
+	for (int i = 0; i < nPtVecLen; i++)
+	{
+		CString line;
+		line.Format("区域: %d", i + nRectLen);
+		listbox->InsertString(i + nRectLen, line);
+	}
 }
 
 void CTagToolsDlg::Redraw()
 {
-	ShowImg(m_mBgMat);
 	if (m_mResizeImg.empty())
 		return;
 
 	cv::Mat img = m_mResizeImg.clone();
-	DrawClickPoints(img);
+
+	DrawDragRect(img);
+	DrawRects(img, 0);
+	DrawClickPoints(img, m_vRects.size());
+
 	ShowImg(img);
 }
 
 bool CTagToolsDlg::SaveRect2Txt()
 {
 	const std::string txtRoot = "RectTxt";
-	if (m_vPointVecs.size() == 0)
+	if (m_vPointVecs.size() + m_vRects.size() == 0)
 	{
 		return false;
 	}
@@ -649,10 +694,9 @@ bool CTagToolsDlg::SaveRect2Txt()
 	std::ofstream out(txtPath);
 
 	out << relativePath << std::endl;
-	out << m_vPointVecs.size() << std::endl;
+	out << m_vPointVecs.size() + m_vRects.size() << std::endl;
 
-	const auto SetRect = [&](const std::vector<cv::Point>& vPts) {
-		// todo 坐标转换
+	const auto SetPtsRect = [&](const std::vector<cv::Point>& vPts) {
 
 		auto oriImgSize = m_mOriImg.size();
 		auto resizeImgSize = m_mResizeImg.size();
@@ -665,9 +709,26 @@ bool CTagToolsDlg::SaveRect2Txt()
 		}
 	};
 
+	const auto SetRects = [&]() {
+
+		auto oriImgSize = m_mOriImg.size();
+		auto resizeImgSize = m_mResizeImg.size();
+		float radio_x = (float)oriImgSize.width / (float)resizeImgSize.width;
+		float radio_y = (float)oriImgSize.height / (float)resizeImgSize.height;
+		
+		for (const auto& rect: m_vRects)
+		{
+			out << "r " << int(rect.x * radio_x + 0.5f) << " " << int(rect.y * radio_y + 0.5f) << " " 
+				<< int(rect.width * radio_x + 0.5f) << " " << int(rect.height * radio_y + 0.5f);
+			out << std::endl;
+		}
+	};
+
+	SetRects();
+
 	for (const auto& vPts : m_vPointVecs)
 	{
-		SetRect(vPts);
+		SetPtsRect(vPts);
 		out << std::endl;
 	}
 
@@ -678,6 +739,7 @@ void CTagToolsDlg::ResetRectInfo()
 {
 	m_vPointVecs.clear();
 	m_vClickPoints.clear();
+	m_vRects.clear();
 }
 
 
@@ -694,23 +756,43 @@ void CTagToolsDlg::OnBnClickedButtonDel()
 		return;
 	}
 
-	auto temp = m_vPointVecs;
+	int nRectLen = m_vRects.size();
+	if (idx < nRectLen) {
+		auto temp = m_vRects;
 
-	int nPtVecLen = m_vPointVecs.size();
+		int cnt = 0;
+		for (auto iter = temp.begin(); iter != temp.end(); iter++)
+		{
+			if (cnt++ != idx)
+			{
+				continue;
+			}
 
-	int cnt = 0;
-	for (auto iter = temp.begin(); iter != temp.end(); iter++)
-	{
-		if (cnt++ != idx)
-		{ 
-			continue;
+			temp.erase(iter);
+			break;
 		}
 
-		temp.erase(iter);
-		break;
+		m_vRects = temp;
 	}
+	else {
+		auto temp = m_vPointVecs;
 
-	m_vPointVecs = temp;
+		int nPtVecLen = m_vPointVecs.size();
+
+		int cnt = 0;
+		for (auto iter = temp.begin(); iter != temp.end(); iter++)
+		{
+			if (cnt++ != (idx - nRectLen))
+			{
+				continue;
+			}
+
+			temp.erase(iter);
+			break;
+		}
+
+		m_vPointVecs = temp;
+	}
 
 	RefreshRectList();
 	Redraw();
@@ -724,9 +806,10 @@ void CTagToolsDlg::OnClose()
 	CDialogEx::OnClose();
 }
 
-bool CTagToolsDlg::LoadExistTxt()
+bool CTagToolsDlg::LoadExistTxt(int curIdx)
 {
-	int idx = m_nCurFileIdx;
+	//int idx = m_nCurFileIdx;
+	int idx = curIdx;
 
 	if (idx < 0)
 		return false;
@@ -744,10 +827,11 @@ bool CTagToolsDlg::LoadExistTxt()
 	if (false == boost::filesystem::exists(rectTxtFile))
 		return false;
 
-	std::vector<std::vector<cv::Point>> vRects;
+	std::vector<std::vector<cv::Point>> vPtss;
+	std::vector<cv::Rect> vRects;
 	std::string relativePathFromInfo, errorMsg;
 
-	if (false == ParseTxtInfo(rectTxtFile, vRects, relativePathFromInfo, errorMsg))
+	if (false == ParseTxtInfo(rectTxtFile, vPtss, vRects, relativePathFromInfo, errorMsg))
 	{
 		MessageBox(errorMsg.c_str());
 		return false;
@@ -759,7 +843,7 @@ bool CTagToolsDlg::LoadExistTxt()
 	float radio_y = (float)oriImgSize.height / (float)resizeImgSize.height;
 
 	m_vPointVecs.clear();
-	for (auto vPts : vRects)
+	for (auto vPts : vPtss)
 	{
 		std::vector<cv::Point> pts;
 		for (auto pt : vPts)
@@ -772,9 +856,17 @@ bool CTagToolsDlg::LoadExistTxt()
 		m_vPointVecs.push_back(pts);
 	}
 
+	m_vRects = vRects;
+	for (auto& rect : m_vRects)
+	{
+		rect.x = int(rect.x / radio_x + 0.5f);
+		rect.y = int(rect.y / radio_y + 0.5f);
+		rect.width = int(rect.width / radio_x + 0.5f);
+		rect.height = int(rect.height / radio_y + 0.5f);
+	}
+
 	return true;
 }
-
 
 void CTagToolsDlg::OnKeyUp(UINT nChar, UINT nRepCnt, UINT nFlags)
 {
@@ -806,4 +898,183 @@ void CTagToolsDlg::RefreshCurListString()
 
 	listbox->InsertString(m_nCurFileIdx, line);
 }
+
+
+void CTagToolsDlg::OnChar(UINT nChar, UINT nRepCnt, UINT nFlags)
+{
+	// TODO:  在此添加消息处理程序代码和/或调用默认值
+
+	CDialogEx::OnChar(nChar, nRepCnt, nFlags);
+}
+
+
+//BOOL CTagToolsDlg::PreTranslateMessage(MSG* pMsg)
+//{
+//	// TODO:  在此添加专用代码和/或调用基类
+//
+//	//CString keyCode;
+//	//if (pMsg->message == WM_KEYUP && false == m_mResizeImg.empty())
+//	//{
+//	//	UINT nChar = (UINT)pMsg->wParam;
+//	//	keyCode.Format("%c", nChar);
+//	//	keyCode.MakeLower();
+//	//	MessageBox(keyCode, "KeyPressed", MB_OK);
+//	//}
+//
+//	return CDialogEx::PreTranslateMessage(pMsg);
+//}
+
+
+BOOL CTagToolsDlg::PreTranslateMessage(MSG* pMsg)
+{
+	// TODO:  在此添加专用代码和/或调用基类
+
+	CString keyCode;
+	if (pMsg->message == WM_KEYDOWN && false == m_mResizeImg.empty())
+	{
+		UINT nChar = (UINT)pMsg->wParam;
+
+		if (nChar == VK_RETURN)
+		{
+			OnBnClickedOk();
+		}
+		else if (nChar == VK_DOWN)
+		{
+			PreChangeSel();
+
+			m_nCurFileIdx = std::min(m_nCurFileIdx + 1, (int)m_vFiles.size() - 1);
+
+			PostChangeSel();
+		}
+		else if (nChar == VK_UP)
+		{
+			PreChangeSel();
+
+			m_nCurFileIdx = std::max(0, m_nCurFileIdx - 1);
+
+			PostChangeSel();
+		}
+		//keyCode.Format("%c", nChar);
+		//keyCode.MakeLower();
+		//MessageBox(keyCode, "KeyPressed", MB_OK);
+		return TRUE;
+	}
+	else
+	{
+		return CDialogEx::PreTranslateMessage(pMsg);
+	}
+
+}
+
+void CTagToolsDlg::PreChangeSel()
+{
+	if (true == SaveRect2Txt())
+		m_vTagged[m_nCurFileIdx] = true;
+
+	RefreshCurListString();
+}
+
+void CTagToolsDlg::PostChangeSel()
+{
+	ResetRectInfo();
+
+	ShowCurSelImg();
+
+	if (LoadExistTxt(m_nCurFileIdx))
+	{
+		m_vTagged[m_nCurFileIdx] = true;
+		RefreshCurListString();
+	}
+
+	CListBox* listbox = (CListBox*)GetDlgItem(IDC_LIST_FILELIST);
+	listbox->SetCurSel(m_nCurFileIdx);
+	listbox->UpdateData();
+
+	RefreshRectList();
+
+	ShowImg(m_mBgMat);
+	Redraw();
+}
+
+void CTagToolsDlg::RefreshTagged()
+{
+	for (int n = 0; n < m_vFiles.size(); n++)
+	{
+		if (LoadExistTxt(n))
+			m_vTagged[n] = true;
+	}
+}
+
+void CTagToolsDlg::DrawDragRect(cv::Mat& drawing)
+{
+	if (false == m_bIsLBPushing)
+		return;
+
+	CRect Prect1;          //定义图片的矩形
+
+	GetDlgItem(IDC_IMAGE)->GetWindowRect(&Prect1);    //得到图片的矩//形大小
+	ScreenToClient(&Prect1);   //将图片框的绝对矩形大小
+
+	const auto SetPt = [&](CPoint& pt) {
+
+		pt.x = std::min(std::max(pt.x, Prect1.left), Prect1.right);
+		pt.y = std::min(std::max(pt.y, Prect1.top), Prect1.bottom);
+
+		pt.x -= Prect1.left;
+		pt.y -= Prect1.top;
+	};
+
+	auto begPt = m_pBegPt;
+	auto endPt = m_pCurPt;
+
+	SetPt(begPt);
+	SetPt(endPt);
+
+	cv::Rect rect(begPt.x, begPt.y, endPt.x - begPt.x, endPt.y - begPt.y);
+
+	if (rect.area() > 400)
+		cv::rectangle(drawing, rect, cv::Scalar(255, 0, 255), 2);
+}
+
+void CTagToolsDlg::DrawRects(cv::Mat& srcImg, int id_offset)
+{
+	std::stringstream ss;
+	for (int i = 0; i < m_vRects.size(); i++)
+	{
+		auto rect = m_vRects[i];
+		ss.str("");
+		ss << i + id_offset;
+		cv::putText(srcImg, ss.str(), cv::Point(rect.x, rect.y - 2), 1, 1, cv::Scalar(255, 255, 255));
+		cv::rectangle(srcImg, rect, cv::Scalar(0, 255, 0), 1);
+	}
+}
+
+void CTagToolsDlg::AddRect(CPoint p1, CPoint p2)
+{
+	CRect Prect1;          //定义图片的矩形
+
+	GetDlgItem(IDC_IMAGE)->GetWindowRect(&Prect1);    //得到图片的矩//形大小
+	ScreenToClient(&Prect1);   //将图片框的绝对矩形大小
+
+	const auto SetPt = [&](CPoint& pt) {
+
+		pt.x = std::min(std::max(pt.x, Prect1.left), Prect1.right);
+		pt.y = std::min(std::max(pt.y, Prect1.top), Prect1.bottom);
+
+		pt.x -= Prect1.left;
+		pt.y -= Prect1.top;
+	};
+
+	auto begPt = m_pBegPt;
+	auto endPt = m_pCurPt;
+
+	SetPt(begPt);
+	SetPt(endPt);
+
+	cv::Rect rect(begPt.x, begPt.y, endPt.x - begPt.x, endPt.y - begPt.y);
+
+	if (rect.area() > 400)
+		m_vRects.push_back(rect);
+}
+
 

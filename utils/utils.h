@@ -10,7 +10,8 @@ const std::vector<std::string>& scanFilesUseRecursive(
 
 bool ParseTxtInfo(
 	const std::string& txtFile,
-	std::vector<std::vector<cv::Point>>& vRects,
+	std::vector<std::vector<cv::Point>>& vPtss,
+	std::vector<cv::Rect>& vRects,
 	std::string& relativePath,
 	std::string& errorMsg = std::string("")
 	);

@@ -45,10 +45,11 @@ void ParseTxt(const std::string& txt)
 {
 	const std::string ImgRoot = "D:\\blue\\data\\»ÈœŸ∞©Õº∆¨\\";
 
-	std::vector<std::vector<cv::Point>> vRects;
+	std::vector<std::vector<cv::Point>> vPtss;
+	std::vector<cv::Rect> vRects;
 	std::string relativePath, errorMsg;
 
-	if (false == ParseTxtInfo(txt, vRects, relativePath, errorMsg))
+	if (false == ParseTxtInfo(txt, vPtss, vRects, relativePath, errorMsg))
 	{
 		std::cout << errorMsg << std::endl;
 		return;
@@ -62,12 +63,17 @@ void ParseTxt(const std::string& txt)
 		return;
 	}
 
-	for (const auto& vPts : vRects)
+	for (const auto& vPts : vPtss)
 	{
 		for (const auto& pt : vPts)
 		{
 			cv::circle(img, pt, 5, cv::Scalar(0, 0, 255), 5, -1);
 		}
+	}
+
+	for (const auto& rect : vRects)
+	{
+		cv::rectangle(img, rect, cv::Scalar(255, 0, 255), 2);
 	}
 
 	cv::imshow("img", img);
@@ -498,14 +504,14 @@ void Preprocess(const std::string& imgFile)
 
 void main(int argc, char** argv)
 {
-	//argc = 2;
-	//argv[1] = "D:\\blue\\codes\\TagTools\\TagTools\\RectTxt\\";
-	//ProcessAllFile(argc, argv, ParseTxt);
-
 	argc = 2;
-	argv[1] = "D:\\blue\\data\\»ÈœŸ∞©Õº∆¨";
+	argv[1] = "D:\\blue\\codes\\TagTools\\TagTools\\RectTxt\\";
+	ProcessAllFile(argc, argv, ParseTxt);
+
+	//argc = 2;
+	//argv[1] = "D:\\blue\\data\\»ÈœŸ∞©Õº∆¨";
 	//argv[1] = "D:\\blue\\codes\\TagTools\\testImgs";
-	ProcessAllFile(argc, argv, Preprocess);
+	//ProcessAllFile(argc, argv, Preprocess);
 
 	//cv::Mat m = cv::Mat::zeros(3, 3, CV_8UC1);
 	//cv::Mat h, v;

@@ -43,14 +43,21 @@ protected:
 	void GetInitImageRect();
 	bool AdjustInputMatSizeAndRect(const cv::Mat& srcImg, cv::Mat& dstImg, CRect& rect);
 	void MatToCImage(const cv::Mat& srcImg, CImage& cImage);
-	void DrawClickPoints(cv::Mat& srcImg);
+	void DrawClickPoints(cv::Mat& srcImg, int id_offset = 0);
 	void AddClickPoint(const CPoint& point);
 	void RefreshRectList();
 	void Redraw();
 	bool SaveRect2Txt();
 	void ResetRectInfo();
-	bool LoadExistTxt();
+	bool LoadExistTxt(int curIdx);
 	void RefreshCurListString();
+	void PreChangeSel();
+	void PostChangeSel();
+	void RefreshTagged();
+	void DrawDragRect(cv::Mat& drawing);
+	void DrawRects(cv::Mat& srcImg, int id_offset = 0);
+	void AddRect(CPoint p1, CPoint p2);
+
 
 private:
 	std::string m_sDicomRoot;
@@ -64,6 +71,11 @@ private:
 	std::vector<std::vector<cv::Point>> m_vPointVecs;
 	int m_nCurFileIdx;
 	std::vector<bool> m_vTagged;
+	bool m_bIsLBPushing; // 鼠标左键是否正在按下
+	bool m_bIsMouseMoving; // 鼠标移动中
+	CPoint m_pBegPt; // 鼠标左键按下位置
+	CPoint m_pCurPt; // 鼠标拖动位置
+	std::vector<cv::Rect> m_vRects; // 
 
 public:
 	const std::string c_sRectTxtPath = "RectTxt"; // 标注文件目录
@@ -78,4 +90,8 @@ public:
 	afx_msg void OnBnClickedButtonDel();
 	afx_msg void OnClose();
 	afx_msg void OnKeyUp(UINT nChar, UINT nRepCnt, UINT nFlags);
+	afx_msg void OnChar(UINT nChar, UINT nRepCnt, UINT nFlags);
+//	virtual BOOL PreTranslateMessage(MSG* pMsg);
+	virtual BOOL PreTranslateMessage(MSG* pMsg);
+	afx_msg void OnMouseMove(UINT nFlags, CPoint point);
 };

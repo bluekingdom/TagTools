@@ -28,8 +28,9 @@ const std::vector<std::string>& scanFilesUseRecursive(
 	return ret;
 }
 
-bool ParseTxtInfo(const std::string& txtFile, 
-	std::vector<std::vector<cv::Point>>& vRects, 
+bool ParseTxtInfo(const std::string& txtFile,
+	std::vector<std::vector<cv::Point>>& vPtss,
+	std::vector<cv::Rect>& vRects,
 	std::string& relativePath, 
 	std::string& errorMsg)
 {
@@ -55,8 +56,8 @@ bool ParseTxtInfo(const std::string& txtFile,
 	relativePath = lines[0];
 	int nRectCount = atoi(lines[1].c_str());
 
-	//std::vector<std::vector<cv::Point>> vRects;
-	vRects.clear();
+	//std::vector<std::vector<cv::Point>> vPtss;
+	vPtss.clear();
 
 	for (int i = 0; i < nRectCount; i++)
 	{
@@ -65,15 +66,29 @@ bool ParseTxtInfo(const std::string& txtFile,
 		std::vector<cv::Point> vPts;
 
 		std::string str;
+		std::vector<std::string> words;
+
 		while (ss >> str)
-		{
-			int idx = str.find(',');
-			int x = atoi(str.substr(0, idx).c_str());
-			int y = atoi(str.substr(idx + 1).c_str());
-			vPts.push_back(cv::Point(x, y));
+			words.push_back(str);
+
+		if (words[0] == "r") {
+			int x = atoi(words[1].c_str());
+			int y = atoi(words[2].c_str());
+			int w = atoi(words[3].c_str());
+			int h = atoi(words[4].c_str());
+
+			vRects.push_back(cv::Rect(x, y, w, h));
+		}
+		else {
+			for (auto word : words) {
+				int idx = word.find(',');
+				int x = atoi(word.substr(0, idx).c_str());
+				int y = atoi(word.substr(idx + 1).c_str());
+				vPts.push_back(cv::Point(x, y));
+			}
+			vPtss.push_back(vPts);
 		}
 
-		vRects.push_back(vPts);
 	}
 
 	return true;

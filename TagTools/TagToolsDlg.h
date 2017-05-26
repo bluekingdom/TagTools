@@ -43,7 +43,7 @@ protected:
 	void GetInitImageRect();
 	bool AdjustInputMatSizeAndRect(const cv::Mat& srcImg, cv::Mat& dstImg, CRect& rect);
 	void MatToCImage(const cv::Mat& srcImg, CImage& cImage);
-	void DrawClickPoints(cv::Mat& srcImg, int id_offset = 0);
+	void DrawClickPointRects(cv::Mat& srcImg, int id_offset = 0);
 	void AddClickPoint(const CPoint& point);
 	void RefreshRectList();
 	void Redraw();
@@ -67,15 +67,15 @@ private:
 	cv::Mat m_mOriImg;
 	cv::Mat m_mResizeImg;
 	//std::vector<cv::Mat> m_vMats;
-	std::vector<cv::Point> m_vClickPoints;
-	std::vector<std::vector<cv::Point>> m_vPointVecs;
+	std::vector<cv::Rect2f> m_vClickPointRects;
+	std::vector<std::vector<cv::Rect2f>> m_vPointRectVecs;
 	int m_nCurFileIdx;
 	std::vector<bool> m_vTagged;
 	bool m_bIsLBPushing; // 鼠标左键是否正在按下
 	bool m_bIsMouseMoving; // 鼠标移动中
 	CPoint m_pBegPt; // 鼠标左键按下位置
 	CPoint m_pCurPt; // 鼠标拖动位置
-	std::vector<cv::Rect> m_vRects; // 
+	std::vector<cv::Rect2f> m_vValidRects; // 
 
 	const int m_nDragMinArea = 10;
 

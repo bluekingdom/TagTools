@@ -51,10 +51,7 @@ BEGIN_MESSAGE_MAP(CAboutDlg, CDialogEx)
 	ON_WM_RBUTTONUP()
 END_MESSAGE_MAP()
 
-
 // CTagToolsDlg 对话框
-
-
 
 CTagToolsDlg::CTagToolsDlg(CWnd* pParent /*=NULL*/)
 	: CDialogEx(CTagToolsDlg::IDD, pParent)
@@ -277,6 +274,12 @@ void CTagToolsDlg::OnLbnSelchangeListFilelist()
 {
 	// TODO:  在此添加控件通知处理程序代码
 
+	if (m_vClickPointRects.size() != 0)
+	{
+		MessageBox("框好区域后记得按回车键！");
+		return;
+	}
+
 	PreChangeSel();
 
 	CListBox* listbox = (CListBox*)GetDlgItem(IDC_LIST_FILELIST);
@@ -468,9 +471,10 @@ void CTagToolsDlg::OnLButtonUp(UINT nFlags, CPoint point)
 
 	if (false == m_bIsMouseMoving)
 	{
-		AddClickPoint(point);
+		//AddClickPoint(point);
 	}
-	else {
+	else 
+	{
 		AddRect(m_pBegPt, m_pCurPt);
 	}
 
@@ -504,22 +508,19 @@ void CTagToolsDlg::OnMouseMove(UINT nFlags, CPoint point)
 	CDialogEx::OnMouseMove(nFlags, point);
 }
 
-void CTagToolsDlg::DrawClickPoints(cv::Mat& srcImg, int id_offset)
+void CTagToolsDlg::DrawClickPointRects(cv::Mat& srcImg, int id_offset)
 {
-	int r = srcImg.size().width * 0.01;
-	if (srcImg.cols > 1000)
-		r = srcImg.size().width * 0.005;
-
-	for (const auto& point : m_vClickPoints)
+	for (const auto& rect: m_vClickPointRects)
 	{
-		cv::circle(srcImg, point, r, cv::Scalar(0, 0, 255), -1);
+		cv::rectangle(srcImg, rect, cv::Scalar(0, 0, 255), 1);
 	}
 
-	const auto GetRect = [](const std::vector<cv::Point>& vPts) -> cv::Rect {
+	const auto GetRect = [](const std::vector<cv::Rect2f>& vRects) -> cv::Rect {
 		int min_x = INT_MAX, min_y = INT_MAX, max_x = INT_MIN, max_y = INT_MIN;
 
-		for (auto pt : vPts)
+		for (auto rect: vRects)
 		{
+			auto pt = (rect.br() + rect.tl()) / 2;
 			if (pt.x < min_x) min_x = pt.x;
 			if (pt.x > max_x) max_x = pt.x;
 			if (pt.y < min_y) min_y = pt.y;
@@ -531,19 +532,19 @@ void CTagToolsDlg::DrawClickPoints(cv::Mat& srcImg, int id_offset)
 
 	std::stringstream ss;
 
-	int nPtVecLen = m_vPointVecs.size();
+	int nPtVecLen = m_vPointRectVecs.size();
 
 	for (int i = 0; i < nPtVecLen; i++)
 	{
-		for (auto pt : m_vPointVecs[i])
+		for (auto rect : m_vPointRectVecs[i])
 		{
-			cv::circle(srcImg, pt, r, cv::Scalar(255, 0, 0), -1);
+			cv::rectangle(srcImg, rect, cv::Scalar(255, 0, 0), 1);
 		}
 
 		ss.str("");
 		ss << i + id_offset;
-		const auto& vPts = m_vPointVecs[i];
-		auto rect = GetRect(vPts);
+		const auto& vRects = m_vPointRectVecs[i];
+		auto rect = GetRect(vRects);
 		cv::putText(srcImg, ss.str(), cv::Point(rect.x, rect.y - 2), 1, 1, cv::Scalar(255, 255, 255));
 		cv::rectangle(srcImg, rect, cv::Scalar(255, 0, 0), 2);
 	}
@@ -551,17 +552,17 @@ void CTagToolsDlg::DrawClickPoints(cv::Mat& srcImg, int id_offset)
 
 void CTagToolsDlg::AddClickPoint(const CPoint& point)
 {
-	CRect Prect1;          //定义图片的矩形
-	CRect Prect;         //图片矩形框
+	//CRect Prect1;          //定义图片的矩形
+	//CRect Prect;         //图片矩形框
 
-	GetDlgItem(IDC_IMAGE)->GetWindowRect(&Prect1);    //得到图片的矩//形大小
-	ScreenToClient(&Prect1);   //将图片框的绝对矩形大小
+	//GetDlgItem(IDC_IMAGE)->GetWindowRect(&Prect1);    //得到图片的矩//形大小
+	//ScreenToClient(&Prect1);   //将图片框的绝对矩形大小
 
-	//判断是否在图片框内，不处理不在图片框内的点击
-	if (point.x<Prect1.left || point.x>Prect1.right || point.y<Prect1.top || point.y>Prect1.bottom)
-		return;
+	////判断是否在图片框内，不处理不在图片框内的点击
+	//if (point.x<Prect1.left || point.x>Prect1.right || point.y<Prect1.top || point.y>Prect1.bottom)
+	//	return;
 
-	m_vClickPoints.push_back(cv::Point(point.x - Prect1.left, point.y - Prect1.top));
+	//m_vClickPointRects.push_back(cv::Point(point.x - Prect1.left, point.y - Prect1.top));
 }
 
 
@@ -576,9 +577,9 @@ void CAboutDlg::OnRButtonUp(UINT nFlags, CPoint point)
 void CTagToolsDlg::OnRButtonUp(UINT nFlags, CPoint point)
 {
 	// TODO:  在此添加消息处理程序代码和/或调用默认值
-	if (m_vClickPoints.size() > 0)
+	if (m_vClickPointRects.size() > 0)
 	{
-		m_vClickPoints.erase(m_vClickPoints.end() - 1);
+		m_vClickPointRects.erase(m_vClickPointRects.end() - 1);
 	}
 
 	//ShowImg(m_mResizeImg.clone());
@@ -592,14 +593,29 @@ void CTagToolsDlg::OnBnClickedOk()
 {
 	// TODO:  在此添加控件通知处理程序代码
 
-	if (m_vClickPoints.size() <= 2)
+	if (m_vValidRects.size() == 0 && m_vClickPointRects.size() > 4)
+	{
+		MessageBox("框好大框后，记得先按回车键!");
+		return;
+	}
+
+	if (m_vClickPointRects.size() == 2)
 	{
 		MessageBox("请先点好区域!");
 		return;
 	}
 
-	m_vPointVecs.push_back(m_vClickPoints);
-	m_vClickPoints.clear();
+
+	if (m_vClickPointRects.size() == 1)
+	{
+		m_vValidRects.push_back(m_vClickPointRects[0]);
+	}
+	else 
+	{
+		m_vPointRectVecs.push_back(m_vClickPointRects);
+	}
+
+	m_vClickPointRects.clear();
 
 	RefreshRectList();
 
@@ -620,7 +636,7 @@ void CTagToolsDlg::RefreshRectList()
 
 	listbox->ResetContent();
 
-	int nRectLen = m_vRects.size();
+	int nRectLen = m_vValidRects.size();
 
 	for (int i = 0; i < nRectLen; i++)
 	{
@@ -629,7 +645,7 @@ void CTagToolsDlg::RefreshRectList()
 		listbox->InsertString(i, line);
 	}
 
-	int nPtVecLen = m_vPointVecs.size();
+	int nPtVecLen = m_vPointRectVecs.size();
 
 	for (int i = 0; i < nPtVecLen; i++)
 	{
@@ -648,7 +664,7 @@ void CTagToolsDlg::Redraw()
 
 	DrawDragRect(img);
 	DrawRects(img, 0);
-	DrawClickPoints(img, m_vRects.size());
+	DrawClickPointRects(img, m_vValidRects.size());
 
 	ShowImg(img);
 }
@@ -656,7 +672,7 @@ void CTagToolsDlg::Redraw()
 bool CTagToolsDlg::SaveRect2Txt()
 {
 	const std::string txtRoot = "RectTxt";
-	if (m_vPointVecs.size() + m_vRects.size() == 0)
+	if (m_vPointRectVecs.size() + m_vValidRects.size() == 0)
 	{
 		return false;
 	}
@@ -677,28 +693,30 @@ bool CTagToolsDlg::SaveRect2Txt()
 	float radio_x = (float)oriImgSize.width / (float)resizeImgSize.width;
 	float radio_y = (float)oriImgSize.height / (float)resizeImgSize.height;
 
-	auto vPointVecs = m_vPointVecs;
-	auto vRects = m_vRects;
+	auto vPointRectVecs = m_vPointRectVecs;
+	auto vValidRects = m_vValidRects;
 
-	for (auto& vPts : vPointVecs)
+	for (auto& vRects : vPointRectVecs)
 	{
-		for (auto& pt : vPts)
+		for (auto& rect : vRects)
 		{
-			pt.x = int(pt.x * radio_x + 0.5f);
-			pt.y = int(pt.y * radio_y + 0.5f);
+			rect.x = (rect.x * radio_x );
+			rect.y = (rect.y * radio_y );
+			rect.width = (rect.width * radio_x );
+			rect.height = (rect.height * radio_y );
 		}
 	}
 
-	for (auto& rect : vRects)
+	for (auto& rect : vValidRects)
 	{
-		rect.x = int(rect.x * radio_x + 0.5f);
-		rect.y = int(rect.y * radio_y + 0.5f);
-		rect.width = int(rect.width * radio_x + 0.5f);
-		rect.height = int(rect.height * radio_y + 0.5f);
+		rect.x = (rect.x * radio_x );
+		rect.y = (rect.y * radio_y );
+		rect.width = (rect.width * radio_x );
+		rect.height = (rect.height * radio_y );
 	}
 
 	std::string txtFilePath, errorMsg;
-	if (false == SaveInfo2Txt(vPointVecs, vRects, relativePath, txtRoot, txtFilePath, errorMsg))
+	if (false == SaveInfo2Txt(vPointRectVecs, vValidRects, relativePath, txtRoot, txtFilePath, errorMsg))
 	{
 		MessageBox(errorMsg.c_str());
 		return false;
@@ -709,9 +727,9 @@ bool CTagToolsDlg::SaveRect2Txt()
 
 void CTagToolsDlg::ResetRectInfo()
 {
-	m_vPointVecs.clear();
-	m_vClickPoints.clear();
-	m_vRects.clear();
+	m_vPointRectVecs.clear();
+	m_vClickPointRects.clear();
+	m_vValidRects.clear();
 }
 
 
@@ -728,9 +746,9 @@ void CTagToolsDlg::OnBnClickedButtonDel()
 		return;
 	}
 
-	int nRectLen = m_vRects.size();
+	int nRectLen = m_vValidRects.size();
 	if (idx < nRectLen) {
-		auto temp = m_vRects;
+		auto temp = m_vValidRects;
 
 		int cnt = 0;
 		for (auto iter = temp.begin(); iter != temp.end(); iter++)
@@ -744,12 +762,12 @@ void CTagToolsDlg::OnBnClickedButtonDel()
 			break;
 		}
 
-		m_vRects = temp;
+		m_vValidRects = temp;
 	}
 	else {
-		auto temp = m_vPointVecs;
+		auto temp = m_vPointRectVecs;
 
-		int nPtVecLen = m_vPointVecs.size();
+		int nPtVecLen = m_vPointRectVecs.size();
 
 		int cnt = 0;
 		for (auto iter = temp.begin(); iter != temp.end(); iter++)
@@ -763,7 +781,7 @@ void CTagToolsDlg::OnBnClickedButtonDel()
 			break;
 		}
 
-		m_vPointVecs = temp;
+		m_vPointRectVecs = temp;
 	}
 
 	RefreshRectList();
@@ -799,11 +817,11 @@ bool CTagToolsDlg::LoadExistTxt(int curIdx)
 	if (false == boost::filesystem::exists(rectTxtFile))
 		return false;
 
-	std::vector<std::vector<cv::Point>> vPtss;
-	std::vector<cv::Rect> vRects;
+	std::vector<std::vector<cv::Rect2f>> vPtsRects;
+	std::vector<cv::Rect2f> vImgRects;
 	std::string relativePathFromInfo, errorMsg;
 
-	if (false == ParseTxtInfo(rectTxtFile, vPtss, vRects, relativePathFromInfo, errorMsg))
+	if (false == ParseTxtInfo(rectTxtFile, vPtsRects, vImgRects, relativePathFromInfo, errorMsg))
 	{
 		MessageBox(errorMsg.c_str());
 		return false;
@@ -814,27 +832,30 @@ bool CTagToolsDlg::LoadExistTxt(int curIdx)
 	float radio_x = (float)oriImgSize.width / (float)resizeImgSize.width;
 	float radio_y = (float)oriImgSize.height / (float)resizeImgSize.height;
 
-	m_vPointVecs.clear();
-	for (auto vPts : vPtss)
+	m_vPointRectVecs.clear();
+	for (auto vRect: vPtsRects)
 	{
-		std::vector<cv::Point> pts;
-		for (auto pt : vPts)
+		std::vector<cv::Rect2f> rects;
+		for (auto rect: vRect)
 		{
-			int x = int(pt.x / radio_x);
-			int y = int(pt.y / radio_y);
+			float x = (rect.x / radio_x);
+			float y = (rect.y / radio_y);
+			float w = (rect.width / radio_x);
+			float h = (rect.height / radio_y);
 
-			pts.push_back(cv::Point(x, y));
+			rects.push_back(cv::Rect2f(x, y, w, h));
 		}
-		m_vPointVecs.push_back(pts);
+
+		m_vPointRectVecs.push_back(rects);
 	}
 
-	m_vRects = vRects;
-	for (auto& rect : m_vRects)
+	m_vValidRects = vImgRects;
+	for (auto& rect : m_vValidRects)
 	{
-		rect.x = int(rect.x / radio_x + 0.5f);
-		rect.y = int(rect.y / radio_y + 0.5f);
-		rect.width = int(rect.width / radio_x + 0.5f);
-		rect.height = int(rect.height / radio_y + 0.5f);
+		rect.x = (rect.x / radio_x );
+		rect.y = (rect.y / radio_y );
+		rect.width = (rect.width / radio_x );
+		rect.height = (rect.height / radio_y );
 	}
 
 	return true;
@@ -910,6 +931,11 @@ BOOL CTagToolsDlg::PreTranslateMessage(MSG* pMsg)
 		}
 		else if (nChar == VK_DOWN)
 		{
+			if (m_vClickPointRects.size() != 0)
+			{
+				MessageBox("框好区域后记得按回车键！");
+				return TRUE;
+			}
 			PreChangeSel();
 
 			m_nCurFileIdx = std::min(m_nCurFileIdx + 1, (int)m_vFiles.size() - 1);
@@ -918,6 +944,11 @@ BOOL CTagToolsDlg::PreTranslateMessage(MSG* pMsg)
 		}
 		else if (nChar == VK_UP)
 		{
+			if (m_vClickPointRects.size() != 0)
+			{
+				MessageBox("框好区域后记得按回车键！");
+				return TRUE;
+			}
 			PreChangeSel();
 
 			m_nCurFileIdx = std::max(0, m_nCurFileIdx - 1);
@@ -1009,9 +1040,9 @@ void CTagToolsDlg::DrawDragRect(cv::Mat& drawing)
 void CTagToolsDlg::DrawRects(cv::Mat& srcImg, int id_offset)
 {
 	std::stringstream ss;
-	for (int i = 0; i < m_vRects.size(); i++)
+	for (int i = 0; i < m_vValidRects.size(); i++)
 	{
-		auto rect = m_vRects[i];
+		auto rect = m_vValidRects[i];
 		ss.str("");
 		ss << i + id_offset;
 		cv::putText(srcImg, ss.str(), cv::Point(rect.x, rect.y - 2), 1, 1, cv::Scalar(255, 255, 255));
@@ -1044,7 +1075,10 @@ void CTagToolsDlg::AddRect(CPoint p1, CPoint p2)
 	cv::Rect rect(begPt.x, begPt.y, endPt.x - begPt.x, endPt.y - begPt.y);
 
 	if (rect.area() > m_nDragMinArea)
-		m_vRects.push_back(rect);
+	{
+		m_vClickPointRects.push_back(rect);
+		//m_vValidRects.push_back(rect);
+	}
 }
 
 

@@ -89,11 +89,11 @@ void ParseTxt(const std::string& txt)
 	//const std::string ImgRoot = "D:\\blue\\data\\乳腺癌图片\\";
 	const std::string ImgRoot = "D:\\迅雷下载\\inpaint_imgs\\";
 
-	std::vector<std::vector<cv::Point>> vPtss;
-	std::vector<cv::Rect> vRects;
+	std::vector<std::vector<cv::Rect2f>> vPtsRects;
+	std::vector<cv::Rect2f> vImgRects;
 	std::string relativePath, errorMsg;
 
-	if (false == ParseTxtInfo(txt, vPtss, vRects, relativePath, errorMsg))
+	if (false == ParseTxtInfo(txt, vPtsRects, vImgRects, relativePath, errorMsg))
 	{
 		std::cout << errorMsg << std::endl;
 		return;
@@ -107,7 +107,7 @@ void ParseTxt(const std::string& txt)
 		return;
 	}
 
-	if (vRects.size() == 0 || vPtss.size() == 0)
+	if (vImgRects.size() == 0 || vPtsRects.size() == 0)
 	{
 		//boost::filesystem::remove(txt);
 		return;
@@ -115,7 +115,7 @@ void ParseTxt(const std::string& txt)
 
 	static int img_no = 0;
 
-	auto r = vRects[0];
+	cv::Rect r = vImgRects[0];
 	auto part = img(r);
 
 	//auto imgFileName = relativePath.substr(0, relativePath.find_last_of('\\') + 1);
@@ -131,11 +131,13 @@ void ParseTxt(const std::string& txt)
 
 	cv::imwrite(fullPath, part);
 
-	const auto GetRect = [](const std::vector<cv::Point>& vPts) -> cv::Rect {
+	const auto GetRect = [](const std::vector<cv::Rect2f>& vRects) -> cv::Rect {
 		int min_x = INT_MAX, min_y = INT_MAX, max_x = INT_MIN, max_y = INT_MIN;
 
-		for (auto pt : vPts)
+		for (auto rect: vRects)
 		{
+			auto pt = (rect.tl() + rect.br()) / 2;
+
 			if (pt.x < min_x) min_x = pt.x;
 			if (pt.x > max_x) max_x = pt.x;
 			if (pt.y < min_y) min_y = pt.y;
@@ -147,11 +149,11 @@ void ParseTxt(const std::string& txt)
 
 	annotFile << "# " << img_no++ << std::endl;
 	annotFile << relativePath << std::endl;
-	annotFile << vPtss.size() << std::endl;
+	annotFile << vPtsRects.size() << std::endl;
 
-	for (const auto& vPts : vPtss)
+	for (const auto& vRects : vPtsRects)
 	{
-		auto bbox = GetRect(vPts);
+		auto bbox = GetRect(vRects);
 		bbox.x -= r.x;
 		bbox.y -= r.y;
 
@@ -201,11 +203,11 @@ void ParseTxtForImgBBox(const std::string& txt)
 {
 	const std::string ImgRoot = "D:\\迅雷下载\\inpaint_imgs\\";
 
-	std::vector<std::vector<cv::Point>> vPtss; 
-	std::vector<cv::Rect> vRects; 
+	std::vector<std::vector<cv::Rect2f>> vPtsRects;
+	std::vector<cv::Rect2f> vImgRects;
 	std::string relativePath, errorMsg;
 
-	if (false == ParseTxtInfo(txt, vPtss, vRects, relativePath, errorMsg))
+	if (false == ParseTxtInfo(txt, vPtsRects, vImgRects, relativePath, errorMsg))
 	{
 		std::cout << errorMsg << std::endl;
 		return;
@@ -219,7 +221,7 @@ void ParseTxtForImgBBox(const std::string& txt)
 		return;
 	}
 
-	if (vRects.size() == 0)
+	if (vImgRects.size() == 0)
 	{
 		//boost::filesystem::remove(txt);
 		return;
@@ -242,11 +244,11 @@ void ParseTxtForImgBBox(const std::string& txt)
 
 	annotFile << "# " << img_no++ << std::endl;
 	annotFile << relativePath << std::endl;
-	annotFile << vRects.size() << std::endl;
+	annotFile << vImgRects.size() << std::endl;
 
-	auto r = img.size();
+	cv::Size2f r = img.size();
 
-	for (const auto& rect : vRects)
+	for (const auto& rect : vImgRects)
 	{
 		auto bbox = rect;
 
@@ -261,10 +263,10 @@ void ParseTxtForImgBBox(const std::string& txt)
 
 		auto tl = bbox.tl();
 		auto br = bbox.br();
-		tl.x = std::max(0, std::min(tl.x, r.width));
-		tl.y = std::max(0, std::min(tl.y, r.height));
-		br.x = std::max(tl.x, std::min(br.x, r.width));
-		br.y = std::max(tl.y, std::min(br.y, r.height));
+		tl.x = (int)std::max(0.f, std::min(tl.x, r.width));
+		tl.y = (int)std::max(0.f, std::min(tl.y, r.height));
+		br.x = (int)std::max(tl.x, std::min(br.x, r.width));
+		br.y = (int)std::max(tl.y, std::min(br.y, r.height));
 
 		annotFile << "1 " << tl.x << " " << tl.y << " " << br.x << " " << br.y << " 0" << std::endl;
 
@@ -297,11 +299,12 @@ void ChangeRelativePath(const std::string& txt)
 	const std::string txtSaveRoot = "D:\\blue\\codes\\TagTools\\TagTools\\RectTxtProcess\\replace\\";
 	const std::string parentPath = "4a类02\\";
 
-	std::vector<std::vector<cv::Point>> vPtss;
-	std::vector<cv::Rect> vRects;
+
+	std::vector<std::vector<cv::Rect2f>> vPtsRects;
+	std::vector<cv::Rect2f> vImgRects;
 	std::string relativePath, errorMsg;
 
-	if (false == ParseTxtInfo(txt, vPtss, vRects, relativePath, errorMsg))
+	if (false == ParseTxtInfo(txt, vPtsRects, vImgRects, relativePath, errorMsg))
 	{
 		std::cout << errorMsg << std::endl;
 		return;
@@ -321,7 +324,7 @@ void ChangeRelativePath(const std::string& txt)
 	std::string relativeTxtFile = relativeFilename + ".txt";
 
 	std::string txtFile;
-	if (false == SaveInfo2Txt(vPtss, vRects, relativePath, txtSaveRoot, txtFile, errorMsg))
+	if (false == SaveInfo2Txt(vPtsRects, vImgRects, relativePath, txtSaveRoot, txtFile, errorMsg))
 	{
 		std::cout << "SaveInfo2Txt error: " << errorMsg << "\n";
 		return;
@@ -334,11 +337,11 @@ void DrawGT(const std::string& txt)
 	const std::string ImgRoot = "D:\\迅雷下载\\results\\";
 	const std::string ResultImgRoot = "D:\\迅雷下载\\results1\\";
 
-	std::vector<std::vector<cv::Point>> vPtss;
-	std::vector<cv::Rect> vRects;
+	std::vector<std::vector<cv::Rect2f>> vPtsRects;
+	std::vector<cv::Rect2f> vImgRects;
 	std::string relativePath, errorMsg;
 
-	if (false == ParseTxtInfo(txt, vPtss, vRects, relativePath, errorMsg))
+	if (false == ParseTxtInfo(txt, vPtsRects, vImgRects, relativePath, errorMsg))
 	{
 		std::cout << errorMsg << std::endl;
 		return;
@@ -352,17 +355,20 @@ void DrawGT(const std::string& txt)
 		return;
 	}
 
-	if (vRects.size() == 0 || vPtss.size() == 0)
+	if (vImgRects.size() == 0 || vPtsRects.size() == 0)
 	{
 		cv::imwrite(ResultImgRoot + relativePath, img);
 		return;
 	}
 
-	const auto GetRect = [](const std::vector<cv::Point>& vPts) -> cv::Rect {
+
+	const auto GetRect = [](const std::vector<cv::Rect2f>& vRects) -> cv::Rect {
 		int min_x = INT_MAX, min_y = INT_MAX, max_x = INT_MIN, max_y = INT_MIN;
 
-		for (auto pt : vPts)
+		for (auto rect : vRects)
 		{
+			auto pt = (rect.tl() + rect.br()) / 2;
+
 			if (pt.x < min_x) min_x = pt.x;
 			if (pt.x > max_x) max_x = pt.x;
 			if (pt.y < min_y) min_y = pt.y;
@@ -372,9 +378,9 @@ void DrawGT(const std::string& txt)
 		return cv::Rect(min_x, min_y, max_x - min_x, max_y - min_y);
 	};
 
-	for (auto vPts : vPtss)
+	for (auto vRects : vPtsRects)
 	{
-		auto rect = GetRect(vPts);
+		auto rect = GetRect(vRects);
 		rect.x -= vRects[0].x;
 		rect.y -= vRects[0].y;
 
@@ -396,8 +402,8 @@ void RemoveImage(const std::string& txt)
 {
 	const std::string ImgRoot = "D:\\blue\\data\\乳腺癌图片\\test\\";
 
-	std::vector<std::vector<cv::Point>> vPtss;
-	std::vector<cv::Rect> vRects;
+	std::vector<std::vector<cv::Rect2f>> vPtss;
+	std::vector<cv::Rect2f> vRects;
 	std::string relativePath, errorMsg;
 
 	if (false == ParseTxtInfo(txt, vPtss, vRects, relativePath, errorMsg))
@@ -1057,8 +1063,13 @@ void Preprocess(const std::string& imgFile)
 
 void Inpainting(const std::string& txt)
 {
-	SYY::HANDLE hHandle;
-	if (SYY::SYY_NO_ERROR != SYY::Inpainting::InitInpaint(hHandle, SYY::Inpainting::Criminisi_P5))
+	SYY::HANDLE hHandle, hHandle2;
+	if (SYY::SYY_NO_ERROR != SYY::Inpainting::InitInpaint(hHandle, SYY::Inpainting::PatchMatch))
+	{
+		std::cerr << "InitPaint error!\n" << std::endl;
+		return;
+	}
+	if (SYY::SYY_NO_ERROR != SYY::Inpainting::InitInpaint(hHandle2, SYY::Inpainting::Criminisi_P5))
 	{
 		std::cerr << "InitPaint error!\n" << std::endl;
 		return;
@@ -1067,11 +1078,11 @@ void Inpainting(const std::string& txt)
 	const std::string ImgRoot = "D:\\blue\\data\\乳腺癌图片\\";
 	const std::string InpaintImgRoot = "D:\\blue\\data\\训练文件\\inpaint_imgs\\";
 
-	std::vector<std::vector<cv::Point>> vPtss;
-	std::vector<cv::Rect> vRects;
+	std::vector<std::vector<cv::Rect2f>> vPtsRects;
+	std::vector<cv::Rect2f> vImgRects;
 	std::string relativePath, errorMsg;
 
-	if (false == ParseTxtInfo(txt, vPtss, vRects, relativePath, errorMsg))
+	if (false == ParseTxtInfo(txt, vPtsRects, vImgRects, relativePath, errorMsg))
 	{
 		std::cout << errorMsg << std::endl;
 		return;
@@ -1086,7 +1097,7 @@ void Inpainting(const std::string& txt)
 	}
 
 	cv::Mat inpaintImg;
-	if (vPtss.size() == 0)
+	if (vPtsRects.size() == 0)
 	{
 		inpaintImg = img;
 	}
@@ -1100,24 +1111,32 @@ void Inpainting(const std::string& txt)
 		if (srcImg.cols > 1000)
 			radius = 15;
 
-		for (auto vPts : vPtss)
+		for (auto vRects : vPtsRects)
 		{
-			for (auto pt : vPts)
+			for (auto rect : vRects)
 			{
-				auto rect = cv::Rect(pt.x - radius / 2, pt.y - radius / 2, radius, radius);
+				//auto rect = cv::Rect(pt.x - radius / 2, pt.y - radius / 2, radius, radius);
 				//auto rect = cv::Rect(pt.x, pt.y, radius, radius);
-				maskImg(rect) = 255;
-				srcImg(rect) = cv::Scalar(255, 255, 255);
+				const int margin = 1;
+				rect.x = (int)std::max(0.f, rect.x - margin);
+				rect.y = (int)std::max(0.f, rect.y - margin);
+				rect.width = (int)std::min((float)srcImg.cols, rect.width + 2 * margin + 0.5f);
+				rect.height = (int)std::min((float)srcImg.rows, rect.height + 2 * margin + 0.5f);
+
+				//maskImg(rect) = 255;
+				//srcImg(rect) = cv::Scalar(255, 255, 255);
+				//cv::rectangle(srcImg, rect, cv::Scalar(255, 255, 255));
 
 				//cv::circle(maskImg, pt, radius, cv::Scalar(255), -1);
 
-				//auto region = img(rect);
-				//cv::cvtColor(region, region, CV_RGB2GRAY);
-				//cv::morphologyEx(region, region, cv::MORPH_DILATE, element5x5);
+				auto region = img(rect);
+				cv::cvtColor(region, region, CV_RGB2GRAY);
+				//cv::morphologyEx(region, region, cv::MORPH_DILATE, element3x3);
 
-				//cv::Mat m = maskImg(rect);
+				cv::Mat m = maskImg(rect);
 				//cv::Canny(region, m, 0, 255);
-				//cv::threshold(region, m, 0, 255, CV_THRESH_OTSU);
+				cv::threshold(region, m, 0, 255, CV_THRESH_OTSU);
+				cv::morphologyEx(m, m, cv::MORPH_DILATE, element5x5);
 				//cv::morphologyEx(m, m, cv::MORPH_CLOSE, element);
 				//cv::dilate(m, m, element3x3);
 				//cv::erode(m, m, element3x3);
@@ -1157,32 +1176,48 @@ void Inpainting(const std::string& txt)
 			}
 		}
 
+		//cv::imshow("srcImg", srcImg);
+		//cv::imshow("mask", maskImg);
+		//cv::waitKey();
 
+		static SYY::Image inpaint;
 
 		for (int i = 0; i < 1; i++)
 		{
-			SYY::Image inpaint,
+			SYY::Image 
 				src((char*)srcImg.data, srcImg.cols, srcImg.rows, srcImg.channels()),
 				mask((char*)maskImg.data, maskImg.cols, maskImg.rows, maskImg.channels());
 
-			if (SYY::SYY_NO_ERROR != SYY::Inpainting::ExecuteInpaint(hHandle, src, mask, inpaint))
+			//if (SYY::SYY_NO_ERROR != SYY::Inpainting::ExecuteInpaint(hHandle, src, mask, inpaint))
+			//	return;
+
+			//inpaintImg = cv::Mat(inpaint.nHeight, inpaint.nWidth, CV_8UC3, inpaint.pData).clone();
+			cv::inpaint(srcImg, maskImg, inpaintImg, 5, cv::INPAINT_NS);
+
+			//cv::imshow("inpaingImg1", inpaintImg);
+
+			src = SYY::Image((char*)inpaintImg.data, inpaintImg.cols, inpaintImg.rows, inpaintImg.channels());
+
+			if (SYY::SYY_NO_ERROR != SYY::Inpainting::ExecuteInpaint(hHandle2, src, mask, inpaint))
 				return;
 
 			inpaintImg = cv::Mat(inpaint.nHeight, inpaint.nWidth, CV_8UC3, inpaint.pData);
 
-			//srcImg = inpaintImg.clone();
+			srcImg = inpaintImg.clone();
 
+			//cv::imshow("inpaingImg2", inpaintImg);
+			//cv::waitKey();
 			//cv::dilate(maskImg, maskImg, element3x3);
 			//cv::imshow("mask", maskImg);
 			//cv::imshow("inpaingImg", inpaintImg);
 			//cv::waitKey();
 		}
 
-		cv::imshow("img", srcImg);
-		cv::imshow("mask", maskImg);
-		cv::imshow("inpaingImg", inpaintImg);
-		cv::waitKey();
-		cv::destroyAllWindows();
+		//cv::imshow("img", srcImg);
+		//cv::imshow("mask", maskImg);
+		//cv::imshow("inpaingImg", inpaintImg);
+		//cv::waitKey();
+		//cv::destroyAllWindows();
 	}
 
 	std::string inpaint_img_path = InpaintImgRoot + relativePath;
@@ -1194,7 +1229,212 @@ void Inpainting(const std::string& txt)
 	cv::imwrite(inpaint_img_path, inpaintImg);
 
 	SYY::Inpainting::ReleaseInpaint(hHandle);
+	SYY::Inpainting::ReleaseInpaint(hHandle2);
 }
+
+cv::Mat getHistImg(const cv::MatND& hist)
+{
+	double maxVal = 0;
+	double minVal = 0;
+
+	//找到直方图中的最大值和最小值
+	cv::minMaxLoc(hist, &minVal, &maxVal, 0, 0);
+	int histSize = hist.rows;
+	cv::Mat histImg(histSize, histSize, CV_8U, cv::Scalar(255));
+	// 设置最大峰值为图像高度的90%
+	int hpt = static_cast<int>(0.9*histSize);
+
+	for (int h = 0; h < histSize; h++)
+	{
+		float binVal = hist.at<float>(h);
+		int intensity = static_cast<int>(binVal*hpt / maxVal);
+		line(histImg, cv::Point(h, histSize), cv::Point(h, histSize - intensity), cv::Scalar::all(0));
+	}
+
+	return histImg;
+}
+
+void ShowHistImg(const cv::Mat& img)
+{
+	const int channels[1] = { 0 };
+	const int histSize[1] = { 256 };
+	float hranges[2] = { 0, 255 };
+	const float* ranges[1] = { hranges };
+	cv::MatND hist;
+	cv::calcHist(&img, 1, channels, cv::Mat(), hist, 1, histSize, ranges);
+
+	cv::imshow("hist", getHistImg(hist));
+}
+
+void Inpainting_old(const std::string& txt)
+{
+	SYY::HANDLE hHandle, hHandle2;
+	if (SYY::SYY_NO_ERROR != SYY::Inpainting::InitInpaint(hHandle, SYY::Inpainting::PatchMatch))
+	{
+		std::cerr << "InitPaint error!\n" << std::endl;
+		return;
+	}
+	if (SYY::SYY_NO_ERROR != SYY::Inpainting::InitInpaint(hHandle2, SYY::Inpainting::Criminisi_P5))
+	{
+		std::cerr << "InitPaint error!\n" << std::endl;
+		return;
+	}
+
+	const std::string ImgRoot = "D:\\blue\\data\\乳腺癌图片\\";
+	const std::string InpaintImgRoot = "D:\\blue\\data\\训练文件\\inpaint_imgs\\";
+
+	std::vector<std::vector<cv::Point>> vPtss;
+	std::vector<cv::Rect> vRects;
+	std::string relativePath, errorMsg;
+
+	if (false == ParseTxtInfo(txt, vPtss, vRects, relativePath, errorMsg))
+	{
+		std::cout << errorMsg << std::endl;
+		return;
+	}
+
+	std::string img_path = ImgRoot + relativePath;
+	cv::Mat img = cv::imread(img_path);
+	if (img.empty())
+	{
+		std::cout << "error when open img: " << img_path << std::endl;
+		return;
+	}
+
+	cv::Mat inpaintImg;
+	if (vPtss.size() == 0)
+	{
+		inpaintImg = img;
+	}
+	else
+	{
+		auto srcImg = img.clone();
+		cv::Mat element5x5 = cv::getStructuringElement(cv::MORPH_RECT, cv::Size(5, 5));
+		cv::Mat element3x3 = cv::getStructuringElement(cv::MORPH_RECT, cv::Size(3, 3));
+		cv::Mat maskImg = cv::Mat::zeros(img.size(), CV_8UC1);
+		int radius = 20;
+		//if (srcImg.cols > 1000) radius = 15;
+
+		for (auto vPts : vPtss)
+		{
+			for (auto pt : vPts)
+			{
+				auto rect = cv::Rect(pt.x + 1 - radius / 2, pt.y + 1 - radius / 2, radius, radius);
+
+				//auto rect = cv::Rect(pt.x, pt.y, radius, radius);
+
+				maskImg(rect) = 255;
+				srcImg(rect) = cv::Scalar(255, 255, 255);
+				//cv::rectangle(srcImg, rect, cv::Scalar(255, 255, 255));
+
+				//cv::circle(maskImg, pt, radius, cv::Scalar(255), -1);
+
+				auto region = img(rect);
+				//cv::cvtColor(region, region, CV_RGB2GRAY);
+				//cv::morphologyEx(region, region, cv::MORPH_DILATE, element3x3);
+
+				cv::Mat m = maskImg(rect);
+				//cv::Canny(region, m, 0, 255);
+				//cv::threshold(region, m, 0, 255, CV_THRESH_OTSU);
+				//cv::morphologyEx(m, m, cv::MORPH_DILATE, element5x5);
+				//cv::morphologyEx(m, m, cv::MORPH_CLOSE, element);
+				//cv::dilate(m, m, element3x3);
+				//cv::erode(m, m, element3x3);
+
+				//ShowHistImg(region);
+
+				//cv::imshow("region", region);
+				//cv::imshow("m", m);
+				//cv::waitKey();
+
+				//std::vector<cv::Rect> bboxes;
+				//GetContoursBBox(m, bboxes);
+
+				//if (bboxes.size() > 1)
+				//{
+				//	std::sort(bboxes.begin(), bboxes.end(), [](const cv::Rect& a, const cv::Rect& b){
+				//		return a.area() > b.area();
+				//	});
+				//}
+
+				//for (auto bbox : bboxes) cv::rectangle(m, bbox, cv::Scalar(128));
+
+				//int min_len = std::min(1, int(bboxes.size()));
+				//for (int i = 0; i < min_len; i++)
+				//{
+				//	img(rect)(bboxes[i]) = cv::Scalar(255, 255, 255);
+				//	m(bboxes[i]) = 255;
+				//}
+
+				//cv::dilate(m, m, element3x3);
+
+				//cv::imshow("region", region);
+				//cv::imshow("m", m);
+				//cv::imshow("img", img);
+				//cv::imshow("mask", maskImg);
+				//cv::waitKey();
+				//cv::circle(maskImg, pt, radius, cv::Scalar(255), -1);
+				//cv::circle(img, pt, radius, cv::Scalar(255), -1);
+			}
+		}
+
+		//cv::imshow("srcImg", srcImg);
+		//cv::imshow("mask", maskImg);
+		//cv::waitKey();
+
+	//	static SYY::Image inpaint;
+
+	//	for (int i = 0; i < 1; i++)
+	//	{
+	//		SYY::Image
+	//			src((char*)srcImg.data, srcImg.cols, srcImg.rows, srcImg.channels()),
+	//			mask((char*)maskImg.data, maskImg.cols, maskImg.rows, maskImg.channels());
+
+	//		//if (SYY::SYY_NO_ERROR != SYY::Inpainting::ExecuteInpaint(hHandle, src, mask, inpaint))
+	//		//	return;
+
+	//		//inpaintImg = cv::Mat(inpaint.nHeight, inpaint.nWidth, CV_8UC3, inpaint.pData).clone();
+	//		cv::inpaint(srcImg, maskImg, inpaintImg, 5, cv::INPAINT_NS);
+
+	//		//cv::imshow("inpaingImg1", inpaintImg);
+
+	//		src = SYY::Image((char*)inpaintImg.data, inpaintImg.cols, inpaintImg.rows, inpaintImg.channels());
+
+	//		if (SYY::SYY_NO_ERROR != SYY::Inpainting::ExecuteInpaint(hHandle2, src, mask, inpaint))
+	//			return;
+
+	//		inpaintImg = cv::Mat(inpaint.nHeight, inpaint.nWidth, CV_8UC3, inpaint.pData);
+
+	//		srcImg = inpaintImg.clone();
+
+	//		//cv::imshow("inpaingImg2", inpaintImg);
+	//		//cv::waitKey();
+	//		//cv::dilate(maskImg, maskImg, element3x3);
+	//		//cv::imshow("mask", maskImg);
+	//		//cv::imshow("inpaingImg", inpaintImg);
+	//		//cv::waitKey();
+	//	}
+
+		cv::imshow("img", srcImg);
+		cv::imshow("mask", maskImg);
+	//	//cv::imshow("inpaingImg", inpaintImg);
+		cv::waitKey();
+	//	//cv::destroyAllWindows();
+	}
+
+	//std::string inpaint_img_path = InpaintImgRoot + relativePath;
+	//std::string inpaintRelativePath = inpaint_img_path.substr(0, inpaint_img_path.find_last_of('\\'));
+
+	//if (false == boost::filesystem::exists(inpaintRelativePath))
+	//	boost::filesystem::create_directories(inpaintRelativePath);
+
+	//cv::imwrite(inpaint_img_path, inpaintImg);
+
+	SYY::Inpainting::ReleaseInpaint(hHandle);
+	SYY::Inpainting::ReleaseInpaint(hHandle2);
+}
+
+
 
 void main(int argc, char** argv)
 {
@@ -1230,9 +1470,13 @@ void main(int argc, char** argv)
 	//argv[1] = "D:\\blue\\codes\\TagTools\\TagTools\\RectTxt\\";
 	//ProcessAllFile(argc, argv, RemoveImage);
 
+	//argc = 2;
+	//argv[1] = "D:\\blue\\codes\\TagTools\\TagTools\\RectTxt\\";
+	//ProcessAllFile(argc, argv, Inpainting);
+
 	argc = 2;
-	argv[1] = "D:\\blue\\codes\\TagTools\\TagTools\\RectTxt\\";
-	ProcessAllFile(argc, argv, Inpainting);
+	argv[1] = "D:\\blue\\codes\\TagTools\\TagTools\\RectTxt1\\";
+	ProcessAllFile(argc, argv, Inpainting_old);
 
 	//cv::Mat m = cv::Mat::zeros(3, 3, CV_8UC1);
 	//cv::Mat h, v;

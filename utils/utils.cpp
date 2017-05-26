@@ -2,6 +2,7 @@
 #include "../utils/utils.h"
 #include <boost/filesystem.hpp>
 #include <opencv2/opencv.hpp>
+#include <sstream>
 
 const std::vector<std::string>& scanFilesUseRecursive(
 	const std::string& rootPath, std::vector<std::string>& container){
@@ -89,6 +90,64 @@ bool ParseTxtInfo(const std::string& txtFile,
 			vPtss.push_back(vPts);
 		}
 
+	}
+
+	return true;
+}
+
+bool SaveInfo2Txt(
+	const std::vector<std::vector<cv::Point>>& vPtss, 
+	const std::vector<cv::Rect>& vRects, 
+	const std::string& relativePath, 
+	const std::string& txtRoot, 
+	std::string& txtFile, std::string& errorMsg /*= std::string("") */)
+{
+	int idx = relativePath.rfind('\\');
+
+	std::string parentPath = "";
+	std::string filename = "";
+
+	std::stringstream ss;
+
+	if (idx != -1)
+	{
+		parentPath = relativePath.substr(0, idx);
+		filename = relativePath.substr(idx + 1, relativePath.find_last_of('.') - idx - 1);
+		ss << txtRoot << "\\" << parentPath;
+	}
+	else {
+		filename = relativePath.substr(0, relativePath.find_last_of('.') - idx - 1);
+		ss << txtRoot;
+	}
+
+	std::string txtPath = ss.str();
+
+	if (false == boost::filesystem::exists(txtPath))
+	{
+		boost::filesystem::create_directories(txtPath);
+	}
+
+	txtPath += "\\" + filename + ".txt";
+
+	std::ofstream out(txtPath);
+
+	out << relativePath << '\n';
+	out << vPtss.size() + vRects.size() << '\n';
+
+	for (const auto& rect : vRects)
+	{
+		out << "r " 
+			<< rect.x << " " << rect.y << " "
+			<< rect.width << " " << rect.height << "\n";
+	}
+
+	for (const auto& vPts : vPtss)
+	{
+		for (const auto& pt : vPts)
+		{
+			out << pt.x << "," << pt.y << " ";
+		}
+		out << '\n';
 	}
 
 	return true;

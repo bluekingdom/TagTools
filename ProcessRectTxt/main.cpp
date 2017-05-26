@@ -1,8 +1,11 @@
 #include <fstream>
 #include <opencv2/opencv.hpp>
 #include <iostream>
+#include <boost/filesystem.hpp>
+#include "MedicalAnalysisSDK.h"
 
 #include "../utils/utils.h"
+#include <omp.h>
 
 typedef void(*Func)(const std::string& param);
 
@@ -35,17 +38,56 @@ void ProcessAllFile(int argc, char** argv, Func func)
 		std::vector<std::string> files;
 		scanFilesUseRecursive(path, files);
 
-		for (auto file : files)
+		int numOfFiles = files.size();
+		for (int i = 0; i < numOfFiles; i++)
 		{
-			std::cout << file << std::endl;
+			auto file = files[i];
+			std::cout << "(" << i << "," << numOfFiles << ") " << file << std::endl;
 			func(file);
 		}
 	}
 }
 
+void ProcessAllFileMP(int argc, char** argv, Func func)
+{
+	std::vector<std::string> paths;
+	for (int i = 1; i < argc; i++)
+	{
+		paths.push_back(argv[i]);
+	}
+
+	for (auto path : paths)
+	{
+		std::vector<std::string> files;
+		scanFilesUseRecursive(path, files);
+
+		int numOfFiles = files.size();
+
+		int num_of_threads = omp_get_max_threads();
+		printf("max number of threads: %d\n", num_of_threads);
+		omp_set_num_threads(num_of_threads / 2);
+		printf("number of threads: %d\n", omp_get_num_threads());
+
+#pragma omp parallel for
+		for (int i = 0; i < numOfFiles; i++)
+		{
+			auto file = files[i];
+			std::cout << "(" << i << "," << numOfFiles << ") " << file << std::endl;
+			func(file);
+		}
+	}
+}
+
+std::string Phase = "train";
+const std::string root = "D:\\blue\\data\\—µ¡∑Œƒº˛\\ºÏ≤‚Õº\\";
+const std::string trainImgsRoot = root + "imgs\\";
+const std::string trainAnnotsFile = root + "\\" + Phase + ".txt";
+std::ofstream annotFile(trainAnnotsFile);
+
 void ParseTxt(const std::string& txt)
 {
-	const std::string ImgRoot = "D:\\blue\\data\\»ÈœŸ∞©Õº∆¨\\";
+	//const std::string ImgRoot = "D:\\blue\\data\\»ÈœŸ∞©Õº∆¨\\";
+	const std::string ImgRoot = "D:\\—∏¿◊œ¬‘ÿ\\inpaint_imgs\\";
 
 	std::vector<std::vector<cv::Point>> vPtss;
 	std::vector<cv::Rect> vRects;
@@ -65,23 +107,318 @@ void ParseTxt(const std::string& txt)
 		return;
 	}
 
+	if (vRects.size() == 0 || vPtss.size() == 0)
+	{
+		//boost::filesystem::remove(txt);
+		return;
+	}
+
+	static int img_no = 0;
+
+	auto r = vRects[0];
+	auto part = img(r);
+
+	//auto imgFileName = relativePath.substr(0, relativePath.find_last_of('\\') + 1);
+	//cv::imwrite(trainImgsRoot + imgFileName, part);
+
+	auto fullPath = trainImgsRoot + relativePath;
+	auto fullRelativePath = fullPath.substr(0, fullPath.find_last_of('\\'));
+
+	if (false == boost::filesystem::exists(fullRelativePath))
+	{
+		boost::filesystem::create_directories(fullRelativePath);
+	}
+
+	cv::imwrite(fullPath, part);
+
+	const auto GetRect = [](const std::vector<cv::Point>& vPts) -> cv::Rect {
+		int min_x = INT_MAX, min_y = INT_MAX, max_x = INT_MIN, max_y = INT_MIN;
+
+		for (auto pt : vPts)
+		{
+			if (pt.x < min_x) min_x = pt.x;
+			if (pt.x > max_x) max_x = pt.x;
+			if (pt.y < min_y) min_y = pt.y;
+			if (pt.y > max_y) max_y = pt.y;
+		}
+
+		return cv::Rect(min_x, min_y, max_x - min_x, max_y - min_y);
+	};
+
+	annotFile << "# " << img_no++ << std::endl;
+	annotFile << relativePath << std::endl;
+	annotFile << vPtss.size() << std::endl;
+
 	for (const auto& vPts : vPtss)
 	{
-		for (const auto& pt : vPts)
+		auto bbox = GetRect(vPts);
+		bbox.x -= r.x;
+		bbox.y -= r.y;
+
+		float radio = 0.05;
+
+		bbox.x = int(bbox.x - bbox.width * radio + 0.5f);
+		bbox.y = int(bbox.y - bbox.height * radio + 0.5f);
+		bbox.width = int(bbox.width * (1 + 2 * radio) + 0.5f);
+		bbox.height = int(bbox.height * (1 + 2 * radio) + 0.5f);
+
+		cv::rectangle(part, bbox, cv::Scalar(255, 255, 255), 2);
+
+		auto tl = bbox.tl();
+		auto br = bbox.br();
+		tl.x = std::max(0, std::min(tl.x, r.width));
+		tl.y = std::max(0, std::min(tl.y, r.height));
+		br.x = std::max(tl.x, std::min(br.x, r.width));
+		br.y = std::max(tl.y, std::min(br.y, r.height));
+
+		annotFile << "1 " << tl.x << " " << tl.y << " " << br.x << " " << br.y << " 0" << std::endl;
+
+		/*for (const auto& pt : vPts)
 		{
 			cv::circle(img, pt, 5, cv::Scalar(0, 0, 255), 5, -1);
-		}
+		}*/
 	}
+
+	annotFile.flush();
+
+	cv::imshow("part", part);
+	cv::waitKey(1);
+
+	//for (const auto& rect : vRects)
+	//{
+	//	cv::rectangle(img, rect, cv::Scalar(255, 0, 255), 2);
+	//}
+
+	//if (img.size().width > 1024)
+	//	cv::resize(img, img, img.size() / 2);
+
+	//cv::imshow("img", img);
+	//cv::waitKey(1000);
+
+}
+
+void ParseTxtForImgBBox(const std::string& txt)
+{
+	const std::string ImgRoot = "D:\\—∏¿◊œ¬‘ÿ\\inpaint_imgs\\";
+
+	std::vector<std::vector<cv::Point>> vPtss; 
+	std::vector<cv::Rect> vRects; 
+	std::string relativePath, errorMsg;
+
+	if (false == ParseTxtInfo(txt, vPtss, vRects, relativePath, errorMsg))
+	{
+		std::cout << errorMsg << std::endl;
+		return;
+	}
+
+	std::string img_path = ImgRoot + relativePath;
+	cv::Mat img = cv::imread(img_path);
+	if (img.empty())
+	{
+		std::cout << "error when open img: " << img_path << std::endl;
+		return;
+	}
+
+	if (vRects.size() == 0)
+	{
+		//boost::filesystem::remove(txt);
+		return;
+	}
+
+	static int img_no = 0;
+
+	//auto imgFileName = relativePath.substr(0, relativePath.find_last_of('\\') + 1);
+	//cv::imwrite(trainImgsRoot + imgFileName, part);
+
+	auto fullPath = trainImgsRoot + relativePath;
+	auto fullRelativePath = fullPath.substr(0, fullPath.find_last_of('\\'));
+
+	if (false == boost::filesystem::exists(fullRelativePath))
+	{
+		boost::filesystem::create_directories(fullRelativePath);
+	}
+
+	cv::imwrite(fullPath, img);
+
+	annotFile << "# " << img_no++ << std::endl;
+	annotFile << relativePath << std::endl;
+	annotFile << vRects.size() << std::endl;
+
+	auto r = img.size();
 
 	for (const auto& rect : vRects)
 	{
+		auto bbox = rect;
+
+		float radio = 0.0f;
+
+		bbox.x = int(bbox.x - bbox.width * radio + 0.5f);
+		bbox.y = int(bbox.y - bbox.height * radio + 0.5f);
+		bbox.width = int(bbox.width * (1 + 2 * radio) + 0.5f);
+		bbox.height = int(bbox.height * (1 + 2 * radio) + 0.5f);
+
+		cv::rectangle(img, bbox, cv::Scalar(255, 255, 255), 2);
+
+		auto tl = bbox.tl();
+		auto br = bbox.br();
+		tl.x = std::max(0, std::min(tl.x, r.width));
+		tl.y = std::max(0, std::min(tl.y, r.height));
+		br.x = std::max(tl.x, std::min(br.x, r.width));
+		br.y = std::max(tl.y, std::min(br.y, r.height));
+
+		annotFile << "1 " << tl.x << " " << tl.y << " " << br.x << " " << br.y << " 0" << std::endl;
+
+		/*for (const auto& pt : vPts)
+		{
+			cv::circle(img, pt, 5, cv::Scalar(0, 0, 255), 5, -1);
+		}*/
+	}
+
+	annotFile.flush();
+
+	cv::imshow("img", img);
+	cv::waitKey(1);
+
+	//for (const auto& rect : vRects)
+	//{
+	//	cv::rectangle(img, rect, cv::Scalar(255, 0, 255), 2);
+	//}
+
+	//if (img.size().width > 1024)
+	//	cv::resize(img, img, img.size() / 2);
+
+	//cv::imshow("img", img);
+	//cv::waitKey(1000);
+}
+
+void ChangeRelativePath(const std::string& txt)
+{
+	const std::string ImgRoot = "D:\\blue\\data\\»ÈœŸ∞©Õº∆¨\\";
+	const std::string txtSaveRoot = "D:\\blue\\codes\\TagTools\\TagTools\\RectTxtProcess\\replace\\";
+	const std::string parentPath = "4a¿‡02\\";
+
+	std::vector<std::vector<cv::Point>> vPtss;
+	std::vector<cv::Rect> vRects;
+	std::string relativePath, errorMsg;
+
+	if (false == ParseTxtInfo(txt, vPtss, vRects, relativePath, errorMsg))
+	{
+		std::cout << errorMsg << std::endl;
+		return;
+	}
+
+	relativePath = parentPath + relativePath;
+
+	std::string img_path = ImgRoot + relativePath;
+	cv::Mat img = cv::imread(img_path);
+	if (img.empty())
+	{
+		std::cout << "error when open img: " << img_path << std::endl;
+		return;
+	}
+
+	std::string relativeFilename = relativePath.substr(0, relativePath.find_last_of('.'));
+	std::string relativeTxtFile = relativeFilename + ".txt";
+
+	std::string txtFile;
+	if (false == SaveInfo2Txt(vPtss, vRects, relativePath, txtSaveRoot, txtFile, errorMsg))
+	{
+		std::cout << "SaveInfo2Txt error: " << errorMsg << "\n";
+		return;
+	}
+}
+
+void DrawGT(const std::string& txt)
+{
+	//const std::string ImgRoot = "D:\\blue\\data\\»ÈœŸ∞©Õº∆¨\\";
+	const std::string ImgRoot = "D:\\—∏¿◊œ¬‘ÿ\\results\\";
+	const std::string ResultImgRoot = "D:\\—∏¿◊œ¬‘ÿ\\results1\\";
+
+	std::vector<std::vector<cv::Point>> vPtss;
+	std::vector<cv::Rect> vRects;
+	std::string relativePath, errorMsg;
+
+	if (false == ParseTxtInfo(txt, vPtss, vRects, relativePath, errorMsg))
+	{
+		std::cout << errorMsg << std::endl;
+		return;
+	}
+
+	std::string img_path = ImgRoot + relativePath;
+	cv::Mat img = cv::imread(img_path);
+	if (img.empty())
+	{
+		std::cout << "error when open img: " << img_path << std::endl;
+		return;
+	}
+
+	if (vRects.size() == 0 || vPtss.size() == 0)
+	{
+		cv::imwrite(ResultImgRoot + relativePath, img);
+		return;
+	}
+
+	const auto GetRect = [](const std::vector<cv::Point>& vPts) -> cv::Rect {
+		int min_x = INT_MAX, min_y = INT_MAX, max_x = INT_MIN, max_y = INT_MIN;
+
+		for (auto pt : vPts)
+		{
+			if (pt.x < min_x) min_x = pt.x;
+			if (pt.x > max_x) max_x = pt.x;
+			if (pt.y < min_y) min_y = pt.y;
+			if (pt.y > max_y) max_y = pt.y;
+		}
+
+		return cv::Rect(min_x, min_y, max_x - min_x, max_y - min_y);
+	};
+
+	for (auto vPts : vPtss)
+	{
+		auto rect = GetRect(vPts);
+		rect.x -= vRects[0].x;
+		rect.y -= vRects[0].y;
+
 		cv::rectangle(img, rect, cv::Scalar(255, 0, 255), 2);
 	}
 
 	cv::imshow("img", img);
-	cv::waitKey();
+	cv::waitKey(1);
 
+	auto fullPath = ResultImgRoot + relativePath;
+	auto fullRelativePath = fullPath.substr(0, fullPath.find_last_of('\\'));
+	if (false == boost::filesystem::exists(fullRelativePath))
+		boost::filesystem::create_directories(fullRelativePath);
+	cv::imwrite(fullPath, img);
 }
+
+
+void RemoveImage(const std::string& txt)
+{
+	const std::string ImgRoot = "D:\\blue\\data\\»ÈœŸ∞©Õº∆¨\\test\\";
+
+	std::vector<std::vector<cv::Point>> vPtss;
+	std::vector<cv::Rect> vRects;
+	std::string relativePath, errorMsg;
+
+	if (false == ParseTxtInfo(txt, vPtss, vRects, relativePath, errorMsg))
+	{
+		std::cout << errorMsg << std::endl;
+		return;
+	}
+
+	std::string img_path = ImgRoot + relativePath;
+	cv::Mat img = cv::imread(img_path);
+	if (img.empty())
+	{
+		std::cout << "error when open img: " << img_path << std::endl;
+		return;
+	}
+
+	static int count = 0;
+	boost::filesystem::remove(img_path);
+	std::cout << "remove count: " << count++;
+}
+
 
 void CalHVProj(const cv::Mat& srcImg, cv::Mat& hProj, cv::Mat& vProj, int col = 1)
 {
@@ -718,16 +1055,184 @@ void Preprocess(const std::string& imgFile)
 	Method3(img);
 }
 
+void Inpainting(const std::string& txt)
+{
+	SYY::HANDLE hHandle;
+	if (SYY::SYY_NO_ERROR != SYY::Inpainting::InitInpaint(hHandle, SYY::Inpainting::Criminisi_P5))
+	{
+		std::cerr << "InitPaint error!\n" << std::endl;
+		return;
+	}
+
+	const std::string ImgRoot = "D:\\blue\\data\\»ÈœŸ∞©Õº∆¨\\";
+	const std::string InpaintImgRoot = "D:\\blue\\data\\—µ¡∑Œƒº˛\\inpaint_imgs\\";
+
+	std::vector<std::vector<cv::Point>> vPtss;
+	std::vector<cv::Rect> vRects;
+	std::string relativePath, errorMsg;
+
+	if (false == ParseTxtInfo(txt, vPtss, vRects, relativePath, errorMsg))
+	{
+		std::cout << errorMsg << std::endl;
+		return;
+	}
+
+	std::string img_path = ImgRoot + relativePath;
+	cv::Mat img = cv::imread(img_path);
+	if (img.empty())
+	{
+		std::cout << "error when open img: " << img_path << std::endl;
+		return;
+	}
+
+	cv::Mat inpaintImg;
+	if (vPtss.size() == 0)
+	{
+		inpaintImg = img;
+	}
+	else 
+	{
+		auto srcImg = img.clone();
+		cv::Mat element5x5 = cv::getStructuringElement(cv::MORPH_RECT, cv::Size(5, 5));
+		cv::Mat element3x3 = cv::getStructuringElement(cv::MORPH_RECT, cv::Size(3, 3));
+		cv::Mat maskImg = cv::Mat::zeros(img.size(), CV_8UC1);
+		int radius = 20;
+		if (srcImg.cols > 1000)
+			radius = 15;
+
+		for (auto vPts : vPtss)
+		{
+			for (auto pt : vPts)
+			{
+				auto rect = cv::Rect(pt.x - radius / 2, pt.y - radius / 2, radius, radius);
+				//auto rect = cv::Rect(pt.x, pt.y, radius, radius);
+				maskImg(rect) = 255;
+				srcImg(rect) = cv::Scalar(255, 255, 255);
+
+				//cv::circle(maskImg, pt, radius, cv::Scalar(255), -1);
+
+				//auto region = img(rect);
+				//cv::cvtColor(region, region, CV_RGB2GRAY);
+				//cv::morphologyEx(region, region, cv::MORPH_DILATE, element5x5);
+
+				//cv::Mat m = maskImg(rect);
+				//cv::Canny(region, m, 0, 255);
+				//cv::threshold(region, m, 0, 255, CV_THRESH_OTSU);
+				//cv::morphologyEx(m, m, cv::MORPH_CLOSE, element);
+				//cv::dilate(m, m, element3x3);
+				//cv::erode(m, m, element3x3);
+
+				//cv::imshow("region", region);
+				//cv::imshow("m", m);
+				//cv::waitKey();
+
+				//std::vector<cv::Rect> bboxes;
+				//GetContoursBBox(m, bboxes);
+
+				//if (bboxes.size() > 1)
+				//{
+				//	std::sort(bboxes.begin(), bboxes.end(), [](const cv::Rect& a, const cv::Rect& b){
+				//		return a.area() > b.area();
+				//	});
+				//}
+
+				//for (auto bbox : bboxes) cv::rectangle(m, bbox, cv::Scalar(128));
+
+				//int min_len = std::min(1, int(bboxes.size()));
+				//for (int i = 0; i < min_len; i++)
+				//{
+				//	img(rect)(bboxes[i]) = cv::Scalar(255, 255, 255);
+				//	m(bboxes[i]) = 255;
+				//}
+
+				//cv::dilate(m, m, element3x3);
+
+				//cv::imshow("region", region);
+				//cv::imshow("m", m);
+				//cv::imshow("img", img);
+				//cv::imshow("mask", maskImg);
+				//cv::waitKey();
+				//cv::circle(maskImg, pt, radius, cv::Scalar(255), -1);
+				//cv::circle(img, pt, radius, cv::Scalar(255), -1);
+			}
+		}
+
+
+
+		for (int i = 0; i < 1; i++)
+		{
+			SYY::Image inpaint,
+				src((char*)srcImg.data, srcImg.cols, srcImg.rows, srcImg.channels()),
+				mask((char*)maskImg.data, maskImg.cols, maskImg.rows, maskImg.channels());
+
+			if (SYY::SYY_NO_ERROR != SYY::Inpainting::ExecuteInpaint(hHandle, src, mask, inpaint))
+				return;
+
+			inpaintImg = cv::Mat(inpaint.nHeight, inpaint.nWidth, CV_8UC3, inpaint.pData);
+
+			//srcImg = inpaintImg.clone();
+
+			//cv::dilate(maskImg, maskImg, element3x3);
+			//cv::imshow("mask", maskImg);
+			//cv::imshow("inpaingImg", inpaintImg);
+			//cv::waitKey();
+		}
+
+		cv::imshow("img", srcImg);
+		cv::imshow("mask", maskImg);
+		cv::imshow("inpaingImg", inpaintImg);
+		cv::waitKey();
+		cv::destroyAllWindows();
+	}
+
+	std::string inpaint_img_path = InpaintImgRoot + relativePath;
+	std::string inpaintRelativePath = inpaint_img_path.substr(0, inpaint_img_path.find_last_of('\\'));
+
+	if (false == boost::filesystem::exists(inpaintRelativePath))
+		boost::filesystem::create_directories(inpaintRelativePath);
+
+	cv::imwrite(inpaint_img_path, inpaintImg);
+
+	SYY::Inpainting::ReleaseInpaint(hHandle);
+}
+
 void main(int argc, char** argv)
 {
-	argc = 2;
-	argv[1] = "D:\\blue\\codes\\TagTools\\TagTools\\RectTxt\\";
-	ProcessAllFile(argc, argv, ParseTxt);
+	if (SYY::SYY_NO_ERROR != SYY::InitSDK())
+	{
+		std::cerr << "InitSDK error!" << std::endl;
+		return;
+	}
+
+	//argc = 2;
+	////argv[1] = "D:\\blue\\data\\—µ¡∑Œƒº˛\\test\\";
+	//argv[1] = "D:\\blue\\codes\\TagTools\\TagTools\\RectTxt\\";
+	//ProcessAllFile(argc, argv, ParseTxt);
+
+	//argc = 2;
+	//argv[1] = (char*)std::string("D:\\blue\\data\\—µ¡∑Œƒº˛\\" + Phase + "\\").c_str();
+	//ProcessAllFile(argc, argv, ParseTxtForImgBBox);
 
 	//argc = 2;
 	//argv[1] = "D:\\blue\\data\\»ÈœŸ∞©Õº∆¨";
 	//argv[1] = "D:\\blue\\codes\\TagTools\\testImgs";
 	//ProcessAllFile(argc, argv, Preprocess);
+
+	//argc = 2;
+	//argv[1] = "D:\\blue\\codes\\TagTools\\TagTools\\RectTxtProcess\\unchange\\";
+	//ProcessAllFile(argc, argv, ChangeRelativePath);
+
+	//argc = 2;
+	//argv[1] = "D:\\blue\\codes\\TagTools\\TagTools\\RectTxt\\4a¿‡01\\";
+	//ProcessAllFile(argc, argv, DrawGT);
+
+	//argc = 2;
+	//argv[1] = "D:\\blue\\codes\\TagTools\\TagTools\\RectTxt\\";
+	//ProcessAllFile(argc, argv, RemoveImage);
+
+	argc = 2;
+	argv[1] = "D:\\blue\\codes\\TagTools\\TagTools\\RectTxt\\";
+	ProcessAllFile(argc, argv, Inpainting);
 
 	//cv::Mat m = cv::Mat::zeros(3, 3, CV_8UC1);
 	//cv::Mat h, v;

@@ -77,6 +77,8 @@ private:
 	CPoint m_pCurPt; // 鼠标拖动位置
 	std::vector<cv::Rect> m_vRects; // 
 
+	const int m_nDragMinArea = 10;
+
 public:
 	const std::string c_sRectTxtPath = "RectTxt"; // 标注文件目录
 

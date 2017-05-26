@@ -8,7 +8,8 @@ ipch
 *.opensdf
 *.zip
 testImgs
-TagTools/RectTxt
+TagTools/RectTxt*
 *.psess
 ProcessRectTxt/testImgs
 *.vspx
+logs

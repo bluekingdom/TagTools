@@ -44,6 +44,7 @@ protected:
 	bool AdjustInputMatSizeAndRect(const cv::Mat& srcImg, cv::Mat& dstImg, CRect& rect);
 	void MatToCImage(const cv::Mat& srcImg, CImage& cImage);
 	void DrawClickPointRects(cv::Mat& srcImg, int id_offset = 0);
+	void DrawAdditionRects(cv::Mat& srcImg, int id_offset = 0);
 	void AddClickPoint(const CPoint& point);
 	void RefreshRectList();
 	void Redraw();
@@ -57,7 +58,19 @@ protected:
 	void DrawDragRect(cv::Mat& drawing);
 	void DrawRects(cv::Mat& srcImg, int id_offset = 0);
 	void AddRect(CPoint p1, CPoint p2);
+	void ImgRects2ScreenRects(std::vector<std::vector<cv::Rect>>& vPtsRect1, std::vector<cv::Rect>& vImgRect);
+	void ScreenRects2ImgRects(std::vector<std::vector<cv::Rect>>& vPtsRect1, std::vector<cv::Rect>& vImgRect);
+	void WinPos2ScreenPos(CPoint& pt);
+	void ReplaceRect(CPoint p1, CPoint p2);
+	void RefreshTxtInfo();
 
+	template<typename T>
+	void ImgRect2SrceenRect(T& rect);
+
+	template<typename T>
+	void ScreenRect2ImgRect(T& rect);
+
+	void ShowMode();
 
 private:
 	std::string m_sDicomRoot;
@@ -68,6 +81,7 @@ private:
 	cv::Mat m_mResizeImg;
 	//std::vector<cv::Mat> m_vMats;
 	std::vector<cv::Rect2f> m_vClickPointRects;
+	std::vector<cv::Rect2f> m_vAdditionRects;
 	std::vector<std::vector<cv::Rect2f>> m_vPointRectVecs;
 	int m_nCurFileIdx;
 	std::vector<bool> m_vTagged;
@@ -76,6 +90,8 @@ private:
 	CPoint m_pBegPt; // 鼠标左键按下位置
 	CPoint m_pCurPt; // 鼠标拖动位置
 	std::vector<cv::Rect2f> m_vValidRects; // 
+	bool m_bEditMode; // 编辑模式
+	bool m_bAddMode; // 附加框模式
 
 	const int m_nDragMinArea = 10;
 

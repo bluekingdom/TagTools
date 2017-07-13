@@ -28,7 +28,7 @@ void ProcessAllPath(int argc, char** argv, Func func) {
 	}
 }
 
-void ProcessAllFile(int argc, char** argv, Func func, int stop_no = 0)
+void ProcessAllFile(int argc, char** argv, Func func, int stop_no = 0, bool is_reserve = false)
 {
 	std::vector<std::string> paths;
 	for (int i = 1; i < argc; i++)
@@ -42,6 +42,14 @@ void ProcessAllFile(int argc, char** argv, Func func, int stop_no = 0)
 	{
 		std::vector<std::string> files;
 		scanFilesUseRecursive(path, files);
+
+		if (is_reserve)
+		{
+			std::vector<std::string> temp;
+			for (int i = files.size() - 1; i >= 0; i--)
+				temp.push_back(files[i]);
+			files = temp;
+		}
 
 		int numOfFiles = files.size();
 		for (int i = 0; i < numOfFiles; i++)
@@ -108,12 +116,10 @@ const auto GetRect = [](const std::vector<cv::Rect2f>& vRects) -> cv::Rect {
 	return cv::Rect(min_x, min_y, max_x - min_x, max_y - min_y);
 };
 
-std::string Phase = "test";
-//const std::string root = "D:\\blue\\data\\训练文件\\检测图\\";
-const std::string root = "D:\\blue\\data\\训练文件\\检测病灶\\";
-const std::string trainImgsRoot = root + "imgs\\";
-const std::string trainAnnotsFile = root + "\\" + Phase + ".txt";
-std::ofstream annotFile(trainAnnotsFile);
+const auto Check_Create_Path = [](std::string path){
+	if (false == boost::filesystem::exists(path))
+		boost::filesystem::create_directories(path);
+};
 
 void ParseTxt(const std::string& txt)
 {
@@ -121,13 +127,31 @@ void ParseTxt(const std::string& txt)
 	//const std::string ImgRoot = "D:\\迅雷下载\\inpaint_imgs\\";
 	const std::string ImgRoot = "D:\\blue\\data\\训练文件\\inpaint_imgs\\";
 
+	const std::string root = "D:\\blue\\data\\训练文件\\检测病灶\\";
+	const std::string trainingImgsRoot = root + "imgs\\";
+	const std::string trainvalAnnotsFilePath = root + "\\" + "train.txt";
+	const std::string testAnnotsFilePath = root + "\\" + "test.txt";
+
+	static std::ofstream trainAnnotFile(trainvalAnnotsFilePath);
+	static std::ofstream testAnnotFile(testAnnotsFilePath);
+
 	std::vector<std::vector<cv::Rect2f>> vPtsRects;
-	std::vector<cv::Rect2f> vImgRects;
+	std::vector<cv::Rect2f> vImgRects, vAddRects;
 	std::string relativePath, errorMsg;
 
-	if (false == ParseTxtInfo(txt, vPtsRects, vImgRects, relativePath, errorMsg))
+	if (false == ParseTxtInfo(txt, vPtsRects, vImgRects, vAddRects, relativePath, errorMsg))
 	{
 		std::cout << errorMsg << std::endl;
+		return;
+	}
+
+	if (vImgRects.size() != 1)
+	{
+		return;
+	}
+
+	if (vPtsRects.size() == 0 && vAddRects.size() == 0)
+	{
 		return;
 	}
 
@@ -139,21 +163,14 @@ void ParseTxt(const std::string& txt)
 		return;
 	}
 
-	if (vImgRects.size() == 0 || vPtsRects.size() == 0)
-	{
-		//boost::filesystem::remove(txt);
-		return;
-	}
-
 	static int img_no = 0;
+	static int trainval_img_no = 0;
+	static int test_img_no = 0;
 
 	cv::Rect r = vImgRects[0];
 	auto part = img(r);
 
-	//auto imgFileName = relativePath.substr(0, relativePath.find_last_of('\\') + 1);
-	//cv::imwrite(trainImgsRoot + imgFileName, part);
-
-	auto fullPath = trainImgsRoot + relativePath;
+	auto fullPath = trainingImgsRoot + relativePath;
 	auto fullRelativePath = fullPath.substr(0, fullPath.find_last_of('\\'));
 
 	if (false == boost::filesystem::exists(fullRelativePath))
@@ -163,54 +180,39 @@ void ParseTxt(const std::string& txt)
 
 	cv::imwrite(fullPath, part);
 
-	const auto GetRect = [](const std::vector<cv::Rect2f>& vRects) -> cv::Rect {
-		int min_x = INT_MAX, min_y = INT_MAX, max_x = INT_MIN, max_y = INT_MIN;
-
-		for (auto rect: vRects)
-		{
-			auto pt = (rect.tl() + rect.br()) / 2;
-
-			if (pt.x < min_x) min_x = pt.x;
-			if (pt.x > max_x) max_x = pt.x;
-			if (pt.y < min_y) min_y = pt.y;
-			if (pt.y > max_y) max_y = pt.y;
-		}
-
-		return cv::Rect(min_x, min_y, max_x - min_x, max_y - min_y);
-	};
-
+	std::vector<cv::Rect> all_bboxes;
 	for (const auto& vRects : vPtsRects)
 	{
 		auto bbox = GetRect(vRects);
 		bbox.x -= r.x;
 		bbox.y -= r.y;
 
-		if (bbox.area() < 1000)
-		{
-			std::cout << "	small area!\n";
-			//cv::rectangle(part, bbox, cv::Scalar(255, 255, 255));
-			//cv::imshow("small", part);
-			//cv::waitKey();
-			//return;
-		}
+		all_bboxes.push_back(bbox);
 	}
 
-	annotFile << "# " << img_no++ << std::endl;
-	annotFile << relativePath << std::endl;
-	annotFile << vPtsRects.size() << std::endl;
-
-	for (const auto& vRects : vPtsRects)
+	for (auto bbox : vAddRects)
 	{
-		auto bbox = GetRect(vRects);
 		bbox.x -= r.x;
 		bbox.y -= r.y;
 
-		float radio = 0.05;
+		all_bboxes.push_back(bbox);
+	}
+
+	std::vector<cv::Vec4i> all_coords;
+	for (auto bbox : all_bboxes)
+	{
+		float radio = 0.01f;
 
 		bbox.x = int(bbox.x - bbox.width * radio + 0.5f);
 		bbox.y = int(bbox.y - bbox.height * radio + 0.5f);
 		bbox.width = int(bbox.width * (1 + 2 * radio) + 0.5f);
 		bbox.height = int(bbox.height * (1 + 2 * radio) + 0.5f);
+
+		if (bbox.x > part.cols || bbox.y > part.rows)
+		{
+			std::cout << "bbox out of img size!\n";
+			continue;
+		}
 
 		cv::rectangle(part, bbox, cv::Scalar(255, 255, 255), 2);
 
@@ -221,125 +223,135 @@ void ParseTxt(const std::string& txt)
 		br.x = std::max(tl.x, std::min(br.x, r.width));
 		br.y = std::max(tl.y, std::min(br.y, r.height));
 
-		annotFile << "1 " << tl.x << " " << tl.y << " " << br.x << " " << br.y << " 0" << std::endl;
-
-		/*for (const auto& pt : vPts)
-		{
-			cv::circle(img, pt, 5, cv::Scalar(0, 0, 255), 5, -1);
-		}*/
+		all_coords.push_back(cv::Vec4i(tl.x, tl.y, br.x, br.y));
 	}
 
-	annotFile.flush();
+	if (vPtsRects.size() != 0)
+	{
+		trainAnnotFile << "# " << trainval_img_no++ << std::endl;
+		trainAnnotFile << relativePath << std::endl;
+		trainAnnotFile << vPtsRects.size() + vAddRects.size() << std::endl;
+
+		for (auto coords : all_coords)
+		{
+			trainAnnotFile << "1 " << coords[0] << " " << coords[1] << " " 
+				<< coords[2] << " " << coords[3] << " 0" << std::endl;
+		}
+	}
+	else if (vPtsRects.size() == 0 && vAddRects.size() != 0)
+	{
+		testAnnotFile << "# " << test_img_no++ << std::endl;
+		testAnnotFile << relativePath << std::endl;
+		testAnnotFile << vAddRects.size() << std::endl;
+
+		for (auto coords : all_coords)
+		{
+			testAnnotFile << "1 " << coords[0] << " " << coords[1] << " " 
+				<< coords[2] << " " << coords[3] << " 0" << std::endl;
+		}
+	}
 
 	cv::imshow("part", part);
 	cv::waitKey(1);
-
-	//for (const auto& rect : vRects)
-	//{
-	//	cv::rectangle(img, rect, cv::Scalar(255, 0, 255), 2);
-	//}
-
-	//if (img.size().width > 1024)
-	//	cv::resize(img, img, img.size() / 2);
-
-	//cv::imshow("img", img);
-	//cv::waitKey(1000);
-
 }
 
-void ParseTxtForImgBBox(const std::string& txt)
-{
-	const std::string ImgRoot = "D:\\迅雷下载\\inpaint_imgs\\";
-
-	std::vector<std::vector<cv::Rect2f>> vPtsRects;
-	std::vector<cv::Rect2f> vImgRects;
-	std::string relativePath, errorMsg;
-
-	if (false == ParseTxtInfo(txt, vPtsRects, vImgRects, relativePath, errorMsg))
-	{
-		std::cout << errorMsg << std::endl;
-		return;
-	}
-
-	std::string img_path = ImgRoot + relativePath;
-	cv::Mat img = cv::imread(img_path);
-	if (img.empty())
-	{
-		std::cout << "error when open img: " << img_path << std::endl;
-		return;
-	}
-
-	if (vImgRects.size() == 0)
-	{
-		//boost::filesystem::remove(txt);
-		return;
-	}
-
-	static int img_no = 0;
-
-	//auto imgFileName = relativePath.substr(0, relativePath.find_last_of('\\') + 1);
-	//cv::imwrite(trainImgsRoot + imgFileName, part);
-
-	auto fullPath = trainImgsRoot + relativePath;
-	auto fullRelativePath = fullPath.substr(0, fullPath.find_last_of('\\'));
-
-	if (false == boost::filesystem::exists(fullRelativePath))
-	{
-		boost::filesystem::create_directories(fullRelativePath);
-	}
-
-	cv::imwrite(fullPath, img);
-
-	annotFile << "# " << img_no++ << std::endl;
-	annotFile << relativePath << std::endl;
-	annotFile << vImgRects.size() << std::endl;
-
-	cv::Size2f r = img.size();
-
-	for (const auto& rect : vImgRects)
-	{
-		auto bbox = rect;
-
-		float radio = 0.0f;
-
-		bbox.x = int(bbox.x - bbox.width * radio + 0.5f);
-		bbox.y = int(bbox.y - bbox.height * radio + 0.5f);
-		bbox.width = int(bbox.width * (1 + 2 * radio) + 0.5f);
-		bbox.height = int(bbox.height * (1 + 2 * radio) + 0.5f);
-
-		cv::rectangle(img, bbox, cv::Scalar(255, 255, 255), 2);
-
-		auto tl = bbox.tl();
-		auto br = bbox.br();
-		tl.x = (int)std::max(0.f, std::min(tl.x, r.width));
-		tl.y = (int)std::max(0.f, std::min(tl.y, r.height));
-		br.x = (int)std::max(tl.x, std::min(br.x, r.width));
-		br.y = (int)std::max(tl.y, std::min(br.y, r.height));
-
-		annotFile << "1 " << tl.x << " " << tl.y << " " << br.x << " " << br.y << " 0" << std::endl;
-
-		/*for (const auto& pt : vPts)
-		{
-			cv::circle(img, pt, 5, cv::Scalar(0, 0, 255), 5, -1);
-		}*/
-	}
-
-	annotFile.flush();
-
-	cv::imshow("img", img);
-	cv::waitKey(1);
-
-	//for (const auto& rect : vRects)
-	//{
-	//	cv::rectangle(img, rect, cv::Scalar(255, 0, 255), 2);
-	//}
-
-	//if (img.size().width > 1024)
-	//	cv::resize(img, img, img.size() / 2);
-
-	//cv::imshow("img", img);
-	//cv::waitKey(1000);
-}
+//
+//void ParseTxtForImgBBox(const std::string& txt)
+//{
+//	const std::string ImgRoot = "D:\\迅雷下载\\inpaint_imgs\\";
+//	const std::string root = "D:\\blue\\data\\训练文件\\检测病灶\\";
+//	const std::string trainImgsRoot = root + "imgs\\";
+//
+//	std::vector<std::vector<cv::Rect2f>> vPtsRects;
+//	std::vector<cv::Rect2f> vImgRects;
+//	std::string relativePath, errorMsg;
+//
+//	if (false == ParseTxtInfo(txt, vPtsRects, vImgRects, relativePath, errorMsg))
+//	{
+//		std::cout << errorMsg << std::endl;
+//		return;
+//	}
+//
+//	std::string img_path = ImgRoot + relativePath;
+//	cv::Mat img = cv::imread(img_path);
+//	if (img.empty())
+//	{
+//		std::cout << "error when open img: " << img_path << std::endl;
+//		return;
+//	}
+//
+//	if (vImgRects.size() == 0)
+//	{
+//		//boost::filesystem::remove(txt);
+//		return;
+//	}
+//
+//	static int img_no = 0;
+//
+//	//auto imgFileName = relativePath.substr(0, relativePath.find_last_of('\\') + 1);
+//	//cv::imwrite(trainImgsRoot + imgFileName, part);
+//
+//	auto fullPath = trainImgsRoot + relativePath;
+//	auto fullRelativePath = fullPath.substr(0, fullPath.find_last_of('\\'));
+//
+//	if (false == boost::filesystem::exists(fullRelativePath))
+//	{
+//		boost::filesystem::create_directories(fullRelativePath);
+//	}
+//
+//	cv::imwrite(fullPath, img);
+//
+//	annotFile << "# " << img_no++ << std::endl;
+//	annotFile << relativePath << std::endl;
+//	annotFile << vImgRects.size() << std::endl;
+//
+//	cv::Size2f r = img.size();
+//
+//	for (const auto& rect : vImgRects)
+//	{
+//		auto bbox = rect;
+//
+//		float radio = 0.0f;
+//
+//		bbox.x = int(bbox.x - bbox.width * radio + 0.5f);
+//		bbox.y = int(bbox.y - bbox.height * radio + 0.5f);
+//		bbox.width = int(bbox.width * (1 + 2 * radio) + 0.5f);
+//		bbox.height = int(bbox.height * (1 + 2 * radio) + 0.5f);
+//
+//		cv::rectangle(img, bbox, cv::Scalar(255, 255, 255), 2);
+//
+//		auto tl = bbox.tl();
+//		auto br = bbox.br();
+//		tl.x = (int)std::max(0.f, std::min(tl.x, r.width));
+//		tl.y = (int)std::max(0.f, std::min(tl.y, r.height));
+//		br.x = (int)std::max(tl.x, std::min(br.x, r.width));
+//		br.y = (int)std::max(tl.y, std::min(br.y, r.height));
+//
+//		annotFile << "1 " << tl.x << " " << tl.y << " " << br.x << " " << br.y << " 0" << std::endl;
+//
+//		/*for (const auto& pt : vPts)
+//		{
+//			cv::circle(img, pt, 5, cv::Scalar(0, 0, 255), 5, -1);
+//		}*/
+//	}
+//
+//	annotFile.flush();
+//
+//	cv::imshow("img", img);
+//	cv::waitKey(1);
+//
+//	//for (const auto& rect : vRects)
+//	//{
+//	//	cv::rectangle(img, rect, cv::Scalar(255, 0, 255), 2);
+//	//}
+//
+//	//if (img.size().width > 1024)
+//	//	cv::resize(img, img, img.size() / 2);
+//
+//	//cv::imshow("img", img);
+//	//cv::waitKey(1000);
+//}
+//
 
 void ChangeRelativePath(const std::string& txt)
 {
@@ -386,10 +398,10 @@ void DrawGT(const std::string& txt)
 	const std::string ResultImgRoot = "D:\\迅雷下载\\results1\\";
 
 	std::vector<std::vector<cv::Rect2f>> vPtsRects;
-	std::vector<cv::Rect2f> vImgRects;
+	std::vector<cv::Rect2f> vImgRects, vAddRects;
 	std::string relativePath, errorMsg;
 
-	if (false == ParseTxtInfo(txt, vPtsRects, vImgRects, relativePath, errorMsg))
+	if (false == ParseTxtInfo(txt, vPtsRects, vImgRects, vAddRects, relativePath, errorMsg))
 	{
 		std::cout << errorMsg << std::endl;
 		return;
@@ -408,23 +420,6 @@ void DrawGT(const std::string& txt)
 		cv::imwrite(ResultImgRoot + relativePath, img);
 		return;
 	}
-
-
-	const auto GetRect = [](const std::vector<cv::Rect2f>& vRects) -> cv::Rect {
-		int min_x = INT_MAX, min_y = INT_MAX, max_x = INT_MIN, max_y = INT_MIN;
-
-		for (auto rect : vRects)
-		{
-			auto pt = (rect.tl() + rect.br()) / 2;
-
-			if (pt.x < min_x) min_x = pt.x;
-			if (pt.x > max_x) max_x = pt.x;
-			if (pt.y < min_y) min_y = pt.y;
-			if (pt.y > max_y) max_y = pt.y;
-		}
-
-		return cv::Rect(min_x, min_y, max_x - min_x, max_y - min_y);
-	};
 
 	for (auto vRects : vPtsRects)
 	{
@@ -1128,8 +1123,9 @@ void Inpainting(const std::string& txt)
 	std::vector<std::vector<cv::Rect2f>> vPtsRects;
 	std::vector<cv::Rect2f> vImgRects, vAddRects;
 	std::string relativePath, errorMsg;
+	std::map<std::string, std::string> mAttrs;
 
-	if (false == ParseTxtInfo(txt, vPtsRects, vImgRects, vAddRects, relativePath, errorMsg))
+	if (false == ParseTxtInfo(txt, vPtsRects, vImgRects, vAddRects, mAttrs, relativePath, errorMsg))
 	{
 		std::cout << errorMsg << std::endl;
 		return;
@@ -1223,8 +1219,6 @@ void Inpainting(const std::string& txt)
 		//cv::waitKey(1);
 		//cv::destroyAllWindows();
 	}
-
-
 
 	cv::imwrite(inpaint_img_path, inpaintImg);
 
@@ -1737,7 +1731,7 @@ void CreatePosNegCrossImgs4Adaboost(const std::string& txt)
 	cv::imwrite(ss.str(), negImg);
 }
 
-void DetectCross(const std::string& imgFile)
+void DetectCrossWithAdaboost(const std::string& imgFile)
 {
 	static cv::CascadeClassifier g_crossDetector("D:\\blue\\data\\训练文件\\adaboost\\cross\\cascade.xml");
 	auto srcImg = cv::imread(imgFile);
@@ -1764,6 +1758,10 @@ void DetectCross(const std::string& imgFile)
 	cv::waitKey();
 }
 
+void DetectCross(const std::string imgFile)
+{
+}
+
 void DetectNode(const std::string& imgFile)
 {
 	static cv::CascadeClassifier g_crossDetector("D:\\blue\\data\\训练文件\\adaboost\\b-scan\\cascade.xml");
@@ -1775,8 +1773,8 @@ void DetectNode(const std::string& imgFile)
 	}
 
 	std::vector<cv::Rect> detections;
-	const float scaleFactor = 1.1f;
-	g_crossDetector.detectMultiScale(srcImg, detections, scaleFactor, 5, 0);
+	const float scaleFactor = 1.05f;
+	g_crossDetector.detectMultiScale(srcImg, detections, scaleFactor, 3, 0);
 
 	for (auto rect : detections)
 	{
@@ -1909,6 +1907,262 @@ void Create_VOC_Annots_With_Filter(const std::string& txt) {
 	const std::string TestAnnotSaveRoot = AnnotSaveRoot + "test\\";
 	const std::string TestImgSaveRoot = ImgSaveRoot + "test\\";
 
+	Check_Create_Path(TrainImgSaveRoot);
+	Check_Create_Path(TrainAnnotSaveRoot);
+	Check_Create_Path(TestImgSaveRoot);
+	Check_Create_Path(TestAnnotSaveRoot);
+
+	std::vector<std::vector<cv::Rect2f>> vPtsRects;
+	std::vector<cv::Rect2f> vImgRects, vAddRects;
+	std::string relativePath, errorMsg;
+	std::map<std::string, std::string> mAttrs;
+
+	if (false == ParseTxtInfo(txt, vPtsRects, vImgRects, vAddRects, mAttrs, relativePath, errorMsg))
+	{
+		std::cout << errorMsg << std::endl;
+		return;
+	}
+
+	//if (vPtsRects.size() == 0 && vAddRects.size() == 0) return;
+
+	if (vImgRects.size() != 1) 
+		return;
+
+	if (mAttrs.find("LessionType") == mAttrs.end())
+		return;
+
+	auto type = mAttrs["LessionType"];
+
+	if (type == "0")
+		return;
+
+	auto typeName = "lession";
+
+	//if (type == "1")
+	//{
+	//	typeName = "lession";
+	//}
+	//else if (type == "2")
+	//{
+	//	typeName = "lymphaden";
+	//}
+
+	auto cls = relativePath.substr(0, relativePath.find_first_of('\\'));
+
+	std::string img_path = ImgRoot + relativePath;
+	cv::Mat img = cv::imread(img_path);
+	if (img.empty())
+	{
+		std::cout << "error when open img: " << img_path << std::endl;
+		return;
+	}
+
+	static int img_no = 0;
+
+	cv::Rect imgBox = vImgRects[0];
+
+	const auto& set_node = [&](const std::string& part_name, const cv::Rect& rect){
+		ptree& node = pt.add("annotation.object", "");
+		node.put("name", part_name);
+		node.put("difficult", 0);
+
+		int xmin = std::max(0, rect.x);
+		int ymin = std::max(0, rect.y);
+		int xmax = std::min(xmin + rect.width, img.cols - 1);
+		int ymax = std::min(ymin + rect.height, img.rows - 1);
+
+		//cv::Rect roi(xmin, ymin, xmax - xmin, ymax - ymin);
+		//cv::Mat image = img(imgBox)(roi);
+		//cv::imshow("1", image);
+		//cv::waitKey(1000);
+
+		ptree& bndbox = node.add("bndbox", "");
+		bndbox.add("xmin", xmin);
+		bndbox.add("ymin", ymin);
+		bndbox.add("xmax", xmax);
+		bndbox.add("ymax", ymax);
+	};
+
+	std::vector<cv::Rect> all_rects;
+
+	for (auto vRects : vPtsRects)
+	{
+		auto rect = GetRect(vRects);
+		rect.x -= imgBox.x;
+		rect.y -= imgBox.y;
+
+		all_rects.push_back(rect);
+	}
+
+	//for (auto rect : vAddRects)
+	//{
+	//	rect.x -= imgBox.x;
+	//	rect.y -= imgBox.y;
+
+	//	all_rects.push_back(rect);
+	//}
+
+	std::stringstream ss;
+	std::string annot_file, img_file;
+
+	// train data
+	if (cls == "1a类" || (vPtsRects.size() == 0 && vAddRects.size() == 0))
+	{
+		pt.clear();
+
+		pt.add("annotation.size.height", imgBox.height);
+		pt.add("annotation.size.width", imgBox.width);
+
+		ss.str("");
+		ss << TrainAnnotSaveRoot << img_no << ".xml";
+		annot_file = ss.str();
+
+		ss.str("");
+		ss << TrainImgSaveRoot << img_no << ".jpg";
+		img_file = ss.str();
+
+		cv::imwrite(img_file, img(imgBox));
+
+		std::ofstream xml_out(annot_file);
+		write_xml(xml_out, pt);
+
+		img_no += 1;
+		return;
+	}
+
+	// test data
+	if (vAddRects.size() > 0 && vPtsRects.size() == 0)
+	{
+		for (auto rect : vAddRects)
+		{
+			rect.x -= imgBox.x;
+			rect.y -= imgBox.y;
+
+			all_rects.push_back(rect);
+		}
+
+		pt.clear();
+
+		pt.add("annotation.size.height", imgBox.height);
+		pt.add("annotation.size.width", imgBox.width);
+
+		for (auto rect : all_rects)
+		{
+			set_node(typeName, rect);
+		}
+
+		ss.str("");
+		ss << TestAnnotSaveRoot << img_no << ".xml";
+		annot_file = ss.str();
+
+		ss.str("");
+		ss << TestImgSaveRoot << img_no << ".jpg";
+		img_file = ss.str();
+
+		cv::imwrite(img_file, img(imgBox));
+
+		std::ofstream xml_out(annot_file);
+		write_xml(xml_out, pt);
+
+		img_no += 1;
+
+		return;
+	}
+
+	/// train data
+	if (all_rects.size() != 0)
+	{
+		int enhanceCount = 10;
+
+		while (enhanceCount-- > 0)
+		{
+			// image
+			ss.str("");
+			ss << TrainImgSaveRoot << img_no << ".jpg";
+			img_file = ss.str();
+
+			auto rect = imgBox;
+			const float resize_radio = 1.0f + float((std::rand() % 1001) - 500) / 1000.f; // 0.5 ~ 1.5
+			cv::Mat part, origin = img(imgBox);
+
+			const int new_width = origin.cols * resize_radio;
+			const int new_height = origin.rows * resize_radio;
+
+			cv::resize(origin, part, cv::Size(new_width, new_height), 0, 0, resize_radio <= 1.0f ? cv::INTER_AREA : cv::INTER_CUBIC);
+
+			const float color_transfer_radio = 1.0f + float((std::rand() % 1001) - 500) / 2000.f; // 0.75 ~ 1.25
+
+			part.convertTo(part, CV_32FC3);
+			part *= color_transfer_radio;
+			part.convertTo(part, CV_8UC3);
+
+			cv::imwrite(img_file, part);
+
+			// end img
+
+			// xml
+
+			ss.str("");
+			ss << TrainAnnotSaveRoot << img_no << ".xml";
+			annot_file = ss.str();
+
+			pt.clear();
+			pt.add("annotation.size.height", new_height);
+			pt.add("annotation.size.width", new_width);
+
+			for (auto rect : all_rects)
+			{
+				rect.x *= resize_radio;
+				rect.y *= resize_radio;
+				rect.width *= resize_radio;
+				rect.height *= resize_radio;
+
+				set_node(typeName, rect);
+
+				cv::rectangle(part, rect, cv::Scalar(255, 255, 255));
+			}
+
+			std::ofstream xml_out(annot_file);
+			write_xml(xml_out, pt);
+
+			img_no += 1;
+
+			//cv::imshow("part", part);
+			//cv::waitKey();
+		}
+
+		return;
+	}
+
+	return;
+}
+
+void Create_VOC_Annots_ImgBox(const std::string& txt) {
+	using namespace boost::property_tree;
+	ptree pt;
+
+	const std::string ImgRoot = "D:\\blue\\data\\训练文件\\inpaint_imgs_crimisi\\";
+	//const std::string ImgRoot = "D:\\blue\\data\\训练文件\\inpaint_imgs\\";
+
+	const std::string AnnotSaveRoot = "D:\\blue\\data\\训练文件\\ssd\\检测图\\annots_v2\\";
+	const std::string ImgSaveRoot = "D:\\blue\\data\\训练文件\\ssd\\检测图\\imgs_v2\\";
+
+	const std::string TrainAnnotSaveRoot = AnnotSaveRoot + "train\\";
+	const std::string TrainImgSaveRoot = ImgSaveRoot + "train\\";
+
+	const std::string TestAnnotSaveRoot = AnnotSaveRoot + "test\\";
+	const std::string TestImgSaveRoot = ImgSaveRoot + "test\\";
+
+	const auto Check_Create_Path = [](std::string path){
+		if (false == boost::filesystem::exists(path))
+			boost::filesystem::create_directories(path);
+	};
+
+	Check_Create_Path(TrainImgSaveRoot);
+	Check_Create_Path(TrainAnnotSaveRoot);
+	Check_Create_Path(TestImgSaveRoot);
+	Check_Create_Path(TestAnnotSaveRoot);
+
 	std::vector<std::vector<cv::Rect2f>> vPtsRects;
 	std::vector<cv::Rect2f> vImgRects, vAddRects;
 	std::string relativePath, errorMsg;
@@ -1959,8 +2213,7 @@ void Create_VOC_Annots_With_Filter(const std::string& txt) {
 		bndbox.add("ymax", ymax);
 	};
 
-	pt.add("annotation.size.height", imgBox.height);
-	pt.add("annotation.size.width", imgBox.width);
+	std::vector<cv::Rect> all_rects;
 
 	for (auto vRects : vPtsRects)
 	{
@@ -1968,52 +2221,107 @@ void Create_VOC_Annots_With_Filter(const std::string& txt) {
 		rect.x -= imgBox.x;
 		rect.y -= imgBox.y;
 
-		set_node("node", rect);
-	}
-
-	for (auto rect : vAddRects)
-	{
-		rect.x -= imgBox.x;
-		rect.y -= imgBox.y;
-
-		set_node("node", rect);
+		all_rects.push_back(rect);
 	}
 
 	std::stringstream ss;
 	std::string annot_file, img_file;
 
-	if (vAddRects.size() > 0 && vPtsRects.size() == 0)
+	int randomNum = std::rand() % 10;
+
+	// test data
+	if (randomNum < 2)
 	{
+		pt.clear();
+
+		pt.add("annotation.size.height", img.rows);
+		pt.add("annotation.size.width", img.cols);
+
+		set_node("imgBox", imgBox);
+
+		ss.str("");
 		ss << TestAnnotSaveRoot << img_no << ".xml";
 		annot_file = ss.str();
 
 		ss.str("");
 		ss << TestImgSaveRoot << img_no << ".jpg";
 		img_file = ss.str();
+
+		cv::imwrite(img_file, img);
+
+		std::ofstream xml_out(annot_file);
+		write_xml(xml_out, pt);
+
+		img_no += 1;
+
+		cv::rectangle(img, imgBox, cv::Scalar(255, 255, 255));
+		cv::imshow("img", img);
+		cv::waitKey(1);
+
+		return;
 	}
-	else {
-		ss << TrainAnnotSaveRoot << img_no << ".xml";
-		annot_file = ss.str();
+	else /// train data
+	{
+		int enhanceCount = 10;
 
-		ss.str("");
-		ss << TrainImgSaveRoot << img_no << ".jpg";
-		img_file = ss.str();
+		while (enhanceCount-- > 0)
+		{
+			// image
+			ss.str("");
+			ss << TrainImgSaveRoot << img_no << ".jpg";
+			img_file = ss.str();
+
+			auto rect = imgBox;
+			const float resize_radio = 1.0f + float((std::rand() % 1001) - 500) / 1000.f; // 0.5 ~ 1.5
+			cv::Mat part, origin = img;
+
+			const int new_width = origin.cols * resize_radio;
+			const int new_height = origin.rows * resize_radio;
+
+			cv::resize(origin, part, cv::Size(new_width, new_height), 0, 0, resize_radio <= 1.0f ? cv::INTER_AREA : cv::INTER_CUBIC);
+
+			const float color_transfer_radio = 1.0f + float((std::rand() % 1001) - 500) / 2000.f; // 0.75 ~ 1.25
+
+			part.convertTo(part, CV_32FC3);
+			part *= color_transfer_radio;
+			part.convertTo(part, CV_8UC3);
+
+			cv::imwrite(img_file, part);
+
+			// end img
+
+			// xml
+
+			ss.str("");
+			ss << TrainAnnotSaveRoot << img_no << ".xml";
+			annot_file = ss.str();
+
+			pt.clear();
+			pt.add("annotation.size.height", new_height);
+			pt.add("annotation.size.width", new_width);
+
+			rect.x *= resize_radio;
+			rect.y *= resize_radio;
+			rect.width *= resize_radio;
+			rect.height *= resize_radio;
+
+			set_node("imgBox", rect);
+
+			cv::rectangle(part, rect, cv::Scalar(255, 255, 255));
+
+			std::ofstream xml_out(annot_file);
+			write_xml(xml_out, pt);
+
+			img_no += 1;
+
+			cv::imshow("part", part);
+			cv::waitKey(1);
+		}
+
+		return;
 	}
 
-	auto img_file_root = img_file.substr(0, img_file.find_last_of('\\'));
-	if (false == boost::filesystem::exists(img_file_root))
-		boost::filesystem::create_directories(img_file_root);
-
-	cv::imwrite(img_file, img(imgBox));
-
-	auto annot_file_root = annot_file.substr(0, annot_file.find_last_of('\\'));
-	if (false == boost::filesystem::exists(annot_file_root))
-		boost::filesystem::create_directories(annot_file_root);
-
-	std::ofstream xml_out(annot_file);
-	write_xml(xml_out, pt);
-
-	img_no += 1;
+	return;
 }
 
 float CalcIOU(cv::Rect a, cv::Rect b)
@@ -2099,6 +2407,719 @@ void GenerateAdditionRect(const std::string& txt)
 	cv::waitKey(1);
 }
 
+void GetTestImg(const std::string& txt)
+{
+	const std::string ImgRoot = "D:\\blue\\data\\乳腺癌图片\\";
+	const std::string ImgSaveRoot = "D:\\blue\\data\\测试图片\\";
+
+	std::vector<std::vector<cv::Rect2f>> vPtsRects;
+	std::vector<cv::Rect2f> vImgRects, vAddRects;
+	std::string relativePath, errorMsg;
+
+	if (false == ParseTxtInfo(txt, vPtsRects, vImgRects, vAddRects, relativePath, errorMsg))
+	{
+		std::cout << errorMsg << std::endl;
+		return;
+	}
+
+	if (vPtsRects.size() != 0 || vAddRects.size() == 0)
+	{
+		return;
+	}
+
+	std::string img_path = ImgRoot + relativePath;
+	cv::Mat img = cv::imread(img_path);
+	if (img.empty())
+	{
+		std::cout << "error when open img: " << img_path << std::endl;
+		return;
+	}
+
+	std::string img_save_path = ImgSaveRoot + relativePath;
+	std::string img_file_relative = img_save_path.substr(0, img_save_path.find_last_of('\\'));
+	if (false == boost::filesystem::exists(img_file_relative))
+		boost::filesystem::create_directories(img_file_relative);
+
+	cv::imwrite(img_save_path, img);
+
+}
+
+//
+//SYY::HANDLE hHandleBUAnalysis2;
+//void DrawSSDResAndGT(const std::string& txt)
+//{
+//	const std::string ImgRoot = "D:\\blue\\data\\训练文件\\inpaint_imgs_crimisi\\";
+//	const std::string txtSaveRoot = "D:\\blue\\codes\\TagTools\\x64\\标注工具\\RectTxtAddtion\\";
+//
+//	std::vector<std::vector<cv::Rect2f>> vPtsRects;
+//	std::vector<cv::Rect2f> vImgRects, vAddRects;
+//	std::string relativePath, errorMsg;
+//
+//	if (false == ParseTxtInfo(txt, vPtsRects, vImgRects, relativePath, errorMsg))
+//	{
+//		std::cout << errorMsg << std::endl;
+//		return;
+//	}
+//
+//	auto txtSaveFile = txtSaveRoot + relativePath.substr(0, relativePath.find_last_of('.')) + ".txt";
+//	if (true == boost::filesystem::exists(txtSaveFile))
+//	{
+//		std::cout << "txt exist!\n";
+//		return;
+//	}
+//
+//	std::string img_path = ImgRoot + relativePath;
+//	cv::Mat img = cv::imread(img_path);
+//	if (img.empty())
+//	{
+//		std::cout << "error when open img: " << img_path << std::endl;
+//		return;
+//	}
+//
+//	static SYY::MedicalAnalysis::BUAnalysisResult result;
+//	if (SYY::SYY_NO_ERROR != SYY::MedicalAnalysis::ExecuteBUAnalysis(hHandleBUAnalysis, (char*)img.data, img.cols, img.rows, &result))
+//	{
+//		std::cout << "execute BU analysis error!\n";
+//		return;
+//	}
+//
+//	const float max_overlay = 0.5f;
+//
+//	std::vector<cv::Rect2f> vAddRects;
+//	for (int i = 0; i < result.nLessionsCount; i++)
+//	{
+//		SYY::Rect detRect = result.pLessionRects[i];
+//		cv::Rect2f r(detRect.x, detRect.y, detRect.w, detRect.h);
+//
+//		bool isMatch = false;
+//		for (auto vRect : vPtsRects)
+//		{
+//			auto rect = GetRect(vRect);
+//			if (max_overlay < CalcIOU(rect, r))
+//			{
+//				isMatch = true;
+//				break;
+//			}
+//		}
+//
+//		if (isMatch) continue;
+//
+//		cv::rectangle(img, r, cv::Scalar(255, 255, 255));
+//
+//		vAddRects.push_back(r);
+//	}
+//
+//	std::string txtFile;
+//	if (false == SaveInfo2Txt(vPtsRects, vImgRects, vAddRects, relativePath, txtSaveRoot, txtFile, errorMsg))
+//	{
+//		std::cout << "save info error: " << errorMsg << "\n";
+//		return;	
+//	}
+//
+//	cv::imshow("img", img);
+//	cv::waitKey(1);
+//}
+//
+
+cv::Mat CreateRandomRect(cv::Mat img, cv::Rect2f sample_rect, cv::Rect2f imgRect)
+{
+	auto rect = sample_rect;
+
+	float posRandomRadio_x = float(std::rand() % 1001 - 500) / 5000.0f; // -0.1 ~ 0.1
+	float posRandomRadio_y = float(std::rand() % 1001 - 500) / 5000.0f; // -0.1 ~ 0.1
+	float lenRandomRadio = float(std::rand() % 1001 - 200) / 2000.0f; // -0.1 ~ 0.4
+	float colorRandomRadio = float(std::rand() % 1001 - 500) / 1500.0f; // -0.33 ~ 0.33
+
+	cv::Point cpox = (rect.tl() + rect.br()) / 2;
+	cpox.x = cpox.x + rect.width * posRandomRadio_x;
+	cpox.y = cpox.y + rect.height * posRandomRadio_y;
+	rect.width *= (1 + lenRandomRadio);
+	rect.height *= (1 + lenRandomRadio);
+	rect.x = std::max(imgRect.x, std::min((cpox.x - rect.width / 2.f), imgRect.br().x - rect.width));
+	rect.y = std::max(imgRect.y, std::min((cpox.y - rect.height / 2.f), imgRect.br().y - rect.height));
+	rect.width = std::min(rect.width, (imgRect.br().x - rect.x));
+	rect.height = std::min(rect.height, (imgRect.br().y - rect.y));
+
+	auto part = img(rect);
+
+	part.convertTo(part, CV_32FC3);
+	part *= (1 + colorRandomRadio);
+	part.convertTo(part, CV_8UC3);
+
+	return part;
+}
+
+void GradingClassify4Lession(const std::string& txt)
+{
+	const std::string ImgRoot = "D:\\blue\\data\\训练文件\\inpaint_imgs_crimisi\\";
+	const std::string ImgSaveRoot = "D:\\blue\\data\\训练文件\\病灶分级\\";
+
+	std::vector<std::vector<cv::Rect2f>> vPtsRects;
+	std::vector<cv::Rect2f> vImgRects, vAddRects;
+	std::string relativePath, errorMsg;
+
+	if (false == ParseTxtInfo(txt, vPtsRects, vImgRects, vAddRects, relativePath, errorMsg))
+	{
+		std::cout << errorMsg << std::endl;
+		return;
+	}
+
+	std::string img_path = ImgRoot + relativePath;
+	cv::Mat img = cv::imread(img_path);
+	if (img.empty())
+	{
+		std::cout << "error when open img: " << img_path << std::endl;
+		return;
+	}
+
+	if (vPtsRects.size() == 0 && vImgRects.size() != 1)
+	{
+		return;
+	}
+
+	std::string img_save_relative = ImgSaveRoot + relativePath;
+	img_save_relative = img_save_relative.substr(0, img_save_relative.find_last_of('\\'));
+	if (false == boost::filesystem::exists(img_save_relative))
+		boost::filesystem::create_directories(img_save_relative);
+	std::string img_save_prefix = ImgSaveRoot + relativePath;
+	img_save_prefix = img_save_prefix.substr(0, img_save_prefix.find_last_of('.'));
+	std::stringstream ss;
+
+	auto imgRect = vImgRects[0];
+
+	for (auto vRects : vPtsRects)
+	{
+		int sampleCount = 10;
+
+		while (sampleCount-- > 0)
+		{
+			auto rect = GetRect(vRects);
+
+			auto part = CreateRandomRect(img, rect, imgRect);
+
+			cv::imshow("part", part);
+			cv::waitKey(1);
+
+			ss.str("");
+			ss << img_save_prefix << "_" << sampleCount << ".jpg";
+			std::string img_save_path = ss.str();
+			cv::imwrite(img_save_path, part);
+		}
+
+	}
+}
+
+void GradingClassify4FullImage(const std::string& txt)
+{
+	const std::string ImgRoot = "D:\\blue\\data\\训练文件\\inpaint_imgs_crimisi\\";
+	const std::string ImgSaveRoot = "D:\\blue\\data\\训练文件\\病灶分级_全图\\";
+	const std::string TrainImgSaveRoot = "D:\\blue\\data\\训练文件\\病灶分级_全图\\train\\";
+	const std::string TestImgSaveRoot = "D:\\blue\\data\\训练文件\\病灶分级_全图\\test\\";
+
+	std::vector<std::vector<cv::Rect2f>> vPtsRects;
+	std::vector<cv::Rect2f> vImgRects, vAddRects;
+	std::string relativePath, errorMsg;
+	std::map<std::string, std::string> mAttrs;
+
+	if (false == ParseTxtInfo(txt, vPtsRects, vImgRects, vAddRects, mAttrs, relativePath, errorMsg))
+	{
+		std::cout << errorMsg << std::endl;
+		return;
+	}
+
+	std::string img_path = ImgRoot + relativePath;
+	cv::Mat img = cv::imread(img_path);
+	if (img.empty())
+	{
+		std::cout << "error when open img: " << img_path << std::endl;
+		return;
+	}
+
+	//if (vPtsRects.size() == 0 && vAddRects.size() == 0) return;
+
+	if (vImgRects.size() != 1)
+	{
+		return;
+	}
+
+	//auto type = mAttrs["LessionType"];
+	//std::string attr_name = "";
+	//if (type == "0")
+	//{
+	//	attr_name = "None";
+	//}
+	//else if (type == "1")
+	//{
+	//	attr_name = "Lession";
+	//}
+	//else if (type == "2")
+	//{
+	//	attr_name = "Lymphaden";
+	//}
+	//else 
+	//{
+	//	std::cout << "error Lession Type: " << type << std::endl;
+	//	return;
+	//}
+
+	Check_Create_Path(TrainImgSaveRoot);
+	Check_Create_Path(TestImgSaveRoot);
+
+	auto cls = relativePath.substr(0, relativePath.find_first_of('\\'));
+	if (cls == "1a类")
+	{
+		cls = "no";
+	}
+	else
+	{
+		cls = "yes";
+	}
+
+	std::stringstream ss;
+
+	auto imgRect = vImgRects[0];
+
+	int randomNum = std::rand() % 10;
+
+	static int img_no = 0;
+
+	// 80% used in train set
+	if (randomNum < 8)
+	{
+		auto img_save_prefix = TrainImgSaveRoot + cls + "\\";
+		Check_Create_Path(img_save_prefix);
+
+		int sampleCount = 10;
+
+		while (sampleCount-- > 0)
+		{
+			auto rect = imgRect;
+			float posRandomRadio_x = float(std::rand() % 1001 - 500) / 50000.0f; // -0.01 ~ 0.01
+			float posRandomRadio_y = float(std::rand() % 1001 - 500) / 50000.0f; // -0.01 ~ 0.01
+			float colorRandomRadio = float(std::rand() % 1001 - 500) / 1500.0f; // -0.33 ~ 0.33
+
+			cv::Point cpox = (rect.tl() + rect.br()) / 2;
+			cpox.x = cpox.x + rect.width * posRandomRadio_x;
+			cpox.y = cpox.y + rect.height * posRandomRadio_y;
+
+			rect.x = std::max(0.f, cpox.x - rect.width / 2.f);
+			rect.y = std::max(0.f, cpox.y - rect.height / 2.f);
+
+			rect.width = std::min(rect.width, img.cols - rect.x);
+			rect.height = std::min(rect.height, img.rows - rect.y);
+
+			auto part = img(rect);
+
+			part.convertTo(part, CV_32FC3);
+			part *= (1 + colorRandomRadio);
+			part.convertTo(part, CV_8UC3);
+
+			cv::imshow("part", part);
+			cv::waitKey(1);
+
+			ss.str("");
+			ss << img_save_prefix << img_no++ << ".jpg";
+
+			std::string img_save_path = ss.str();
+			cv::imwrite(img_save_path, part);
+		}
+	}
+	else 
+	{
+		auto img_save_prefix = TestImgSaveRoot + cls + "\\";
+		Check_Create_Path(img_save_prefix);
+
+		auto part = img(imgRect);
+
+		ss.str("");
+		ss << img_save_prefix << img_no++ << ".jpg";
+
+		std::string img_save_path = ss.str();
+		cv::imwrite(img_save_path, part);
+	}
+}
+
+void AddLessionAttrInfo(const std::string& txt)
+{
+	const std::string ImgRoot = "D:\\blue\\data\\乳腺癌图片\\";
+	const std::string txtSaveRoot = "D:\\blue\\codes\\TagTools\\TagTools\\RectTxtProcess\\new_txtRect\\";
+
+	std::vector<std::vector<cv::Rect2f>> vPtsRects;
+	std::vector<cv::Rect2f> vImgRects, vAddRects;
+	std::string relativePath, errorMsg;
+
+	if (false == ParseTxtInfo(txt, vPtsRects, vImgRects, vAddRects, relativePath, errorMsg))
+	{
+		std::cout << errorMsg << std::endl;
+		return;
+	}
+
+	std::string img_path = ImgRoot + relativePath;
+	cv::Mat img = cv::imread(img_path);
+	if (img.empty())
+	{
+		std::cout << "error when open img: " << img_path << std::endl;
+		return;
+	}
+
+	std::map<std::string, std::string> mAttr;
+	mAttr["LessionType"] = "0";
+
+	std::string txtFile;
+	if (false == SaveInfo2Txt(vPtsRects, vImgRects, vAddRects, mAttr, relativePath, txtSaveRoot, txtFile, errorMsg))
+	{
+		std::cout << "save info error: " << errorMsg << "\n";
+		return;	
+	}
+}
+
+void TestAcc(const std::string& txt)
+{
+	const std::string ImgRoot = "D:\\blue\\data\\乳腺癌图片\\";
+	const std::string InpaintImgRoot = "D:\\blue\\data\\训练文件\\inpaint_imgs_crimisi\\";
+
+	std::vector<std::vector<cv::Rect2f>> vPtsRects;
+	std::vector<cv::Rect2f> vImgRects, vAddRects;
+	std::string relativePath, errorMsg;
+	std::map<std::string, std::string> mAttrs;
+
+	if (false == ParseTxtInfo(txt, vPtsRects, vImgRects, vAddRects, mAttrs, relativePath, errorMsg))
+	{
+		std::cout << errorMsg << std::endl;
+		return;
+	}
+
+	if (vImgRects.size() != 1)
+		return;
+
+	auto cls = relativePath.substr(0, relativePath.find_first_of('\\'));
+
+	//if (cls != "1a类" && vPtsRects.size() != 0) return;
+
+	std::string img_path = ImgRoot + relativePath;
+	std::string inpaint_img_path = InpaintImgRoot + relativePath;
+	cv::Mat origin_img = cv::imread(img_path);
+	if (origin_img.empty())
+	{
+		std::cout << "error when open img: " << img_path << std::endl;
+		return;
+	}
+	cv::Mat inpaint_img = cv::imread(inpaint_img_path);
+	if (inpaint_img.empty())
+	{
+		std::cout << "error when open img: " << inpaint_img_path << std::endl;
+		return;
+	}
+
+	static SYY::MedicalAnalysis::BUAnalysisResult result;
+
+	static int f_f_count = 0;
+	static int f_t_count = 0;
+	static int t_f_count = 0;
+	static int t_count = 0;
+	static int f_count = 0;
+
+	auto img = inpaint_img;
+	if (SYY::SYY_NO_ERROR != SYY::MedicalAnalysis::ExecuteBUAnalysis(
+		hHandleBUAnalysis, (char*)img.data, img.cols, img.rows, &result))
+	{
+		std::cout << "execute BU analysis error!\n";
+		return;
+	}
+
+	if ((vPtsRects.size() == 0 && vAddRects.size() == 0) || cls == "1a类")
+		f_count += 1;
+	else
+		t_count += 1;
+
+	const auto write_img = [&](const std::string& type) 
+	{
+		auto draw = origin_img.clone();
+		cv::Rect r(result.rCropRect.x, result.rCropRect.y, result.rCropRect.w, result.rCropRect.h);
+		cv::putText(draw, result.nGrading == SYY::MedicalAnalysis::LG1a ? "1a" : "other", r.tl(), 1, 1, cv::Scalar(255, 255, 255));
+		cv::rectangle(draw, r, cv::Scalar(255, 255, 255), 1);
+
+		std::stringstream ss;
+		for (int i = 0; i < result.nLessionsCount; i++)
+		{
+			auto lr = result.pLessionRects[i];
+			cv::Rect r(lr.x, lr.y, lr.w, lr.h);
+			cv::rectangle(draw, r, cv::Scalar(255, 255, 255), 1);
+
+			ss.str("");
+			ss.clear();
+
+			ss.width(3);
+			ss << result.pLessionConfidence[i];
+
+			cv::putText(draw, ss.str(), (r.tl() + r.br()) / 2, 1, 1, cv::Scalar(255, 255, 255));
+
+			ss.str("");
+			ss.clear();
+			ss << ((result.pLessionTypes[i] == SYY::MedicalAnalysis::NO_LESSION) ? "non-l" : "lession");
+
+			cv::putText(draw, ss.str(), r.tl(), 1, 1, cv::Scalar(255, 255, 255));
+		}
+
+		for (auto vRects : vPtsRects)
+		{
+			auto rect = GetRect(vRects);
+			cv::rectangle(draw, rect, cv::Scalar(0, 0, 255), 2);
+		}
+		for (auto rect : vAddRects)
+		{
+			cv::rectangle(draw, rect, cv::Scalar(0, 0, 255), 2);
+		}
+
+		const std::string path = type + "\\" + relativePath;
+		auto folder = path.substr(0, path.find_last_of('\\'));
+		Check_Create_Path(folder);
+		cv::imwrite(path, draw);
+	};
+
+	if (result.nLessionsCount == 0 && result.nGrading == SYY::MedicalAnalysis::LG1a)
+	{
+		// to false 
+		// false
+		if ((vPtsRects.size() == 0 && vAddRects.size() == 0) || cls == "1a类")
+			f_f_count += 1;
+
+		// true image
+		if ((vPtsRects.size() > 0 || vAddRects.size() > 0) && cls != "1a类")
+		{
+			t_f_count += 1;
+			write_img("t2f");
+		}
+	}
+	else if (result.nLessionsCount != 0 && result.nGrading == SYY::MedicalAnalysis::LG1a)
+	{
+		bool is_false = true;
+
+		// to true
+		for (int i = 0; i < result.nLessionsCount; i++)
+		{
+			if (result.pLessionConfidence[i] > 0.5f || result.pLessionTypes[i] == SYY::MedicalAnalysis::LESSION)
+			{
+				is_false = false;
+
+				// false image
+				if ((vPtsRects.size() == 0 && vAddRects.size() == 0) || cls == "1a类")
+				{
+					f_t_count += 1;
+					write_img("f2t");
+				}
+
+				break;
+			}
+		}
+
+		// to false
+		if (is_false)
+		{
+			// false image
+			if ((vPtsRects.size() == 0 && vAddRects.size() == 0) || cls == "1a类")
+				f_f_count += 1;
+
+			// true image
+			if ((vPtsRects.size() > 0 || vAddRects.size() > 0) && cls != "1a类")
+			{
+				t_f_count += 1;
+				write_img("t2f");
+			}
+		}
+	}
+	else if (result.nLessionsCount != 0 && result.nGrading == SYY::MedicalAnalysis::LG_OTHER)
+	{
+		// to true
+		if ((vPtsRects.size() == 0 && vAddRects.size() == 0) || cls == "1a类")
+		{
+			f_t_count += 1;
+			write_img("f2t");
+		}
+	}
+	else if (result.nLessionsCount == 0 && result.nGrading == SYY::MedicalAnalysis::LG_OTHER)
+	{
+		// to true
+
+		//if ((vPtsRects.size() == 0 && vAddRects.size() == 0) || cls == "1a类")
+		//{
+		//	f_t_count += 1;
+		//	write_img("f2t");
+		//}
+
+		// true image
+		if ((vPtsRects.size() > 0 || vAddRects.size() > 0) && cls != "1a类")
+		{
+			t_f_count += 1;
+			write_img("t2f");
+		}
+	}
+	else {
+		write_img("other");
+		std::cout << "some thing else!!!\n";
+	}
+
+	std::cout << "false2false: " << (float)f_f_count / (float)f_count<< " (" << f_f_count << ", " << f_count << ")\n";
+	std::cout << "true2false: " << (float)t_f_count / (float)t_count << " (" << t_f_count << ", " << t_count << ")\n";
+	std::cout << "false2true: " << (float)f_t_count / (float)f_count << " (" << f_t_count << ", " << f_count << ")\n";
+
+	write_img("res");
+}
+
+void GetTrueFalseRegion(const std::string& txt)
+{
+	const std::string ImgRoot = "D:\\blue\\data\\训练文件\\inpaint_imgs_crimisi\\";
+
+	const std::string TrainImgSaveRoot = "D:\\blue\\data\\训练文件\\lession_nonlession\\train\\";
+	const std::string TestImgSaveRoot = "D:\\blue\\data\\训练文件\\lession_nonlession\\val\\";
+
+	std::vector<std::vector<cv::Rect2f>> vPtsRects;
+	std::vector<cv::Rect2f> vImgRects, vAddRects;
+	std::string relativePath, errorMsg;
+	std::map<std::string, std::string> mAttrs;
+
+	Check_Create_Path(TrainImgSaveRoot);
+	Check_Create_Path(TestImgSaveRoot);
+
+	if (false == ParseTxtInfo(txt, vPtsRects, vImgRects, vAddRects, mAttrs, relativePath, errorMsg))
+	{
+		std::cout << errorMsg << std::endl;
+		return;
+	}
+
+	if (vImgRects.size() != 1)
+		return;
+
+	if (vPtsRects.size() == 0 && vAddRects.size() > 0)
+		return;
+
+	auto imgRect = vImgRects[0];
+
+	auto cls = relativePath.substr(0, relativePath.find_first_of('\\'));
+
+	//if (cls != "1a类" && vPtsRects.size() != 0) return;
+
+	std::string img_path = ImgRoot + relativePath;
+	cv::Mat img = cv::imread(img_path);
+
+	if (img.empty())
+	{
+		std::cout << "error when open img: " << img_path << std::endl;
+		return;
+	}
+
+	static SYY::MedicalAnalysis::BUAnalysisResult result;
+
+	if (SYY::SYY_NO_ERROR != SYY::MedicalAnalysis::ExecuteBUAnalysis(
+		hHandleBUAnalysis, (char*)img.data, img.cols, img.rows, &result))
+	{
+		std::cout << "execute BU analysis error!\n";
+		return;
+	}
+
+	const float max_overlay = 0.5f;
+
+	std::vector<cv::Rect> nonLessionsRects;
+	std::vector<cv::Rect> lessionsRects;
+
+	auto draw = img.clone();
+
+	for (auto vRect : vPtsRects)
+	{
+		auto rect = GetRect(vRect);
+		lessionsRects.push_back(rect);
+
+		cv::rectangle(draw, rect, cv::Scalar(0, 0, 255), 2);
+	}
+
+	for (int i = 0; i < result.nLessionsCount; i++)
+	{
+		SYY::Rect detRect = result.pLessionRects[i];
+		cv::Rect2f r(detRect.x, detRect.y, detRect.w, detRect.h);
+
+		cv::rectangle(draw, r, cv::Scalar(255, 255, 255), 1);
+
+		bool isMatch = false;
+		for (auto vRect : vPtsRects)
+		{
+			auto rect = GetRect(vRect);
+
+			if (max_overlay < CalcIOU(rect, r))
+			{
+				isMatch = true;
+				break;
+			}
+		}
+
+		if (false == isMatch) 
+		{
+			// create non lession train region
+			nonLessionsRects.push_back(r);
+		}
+	}
+
+	cv::imshow("draw", draw);
+	cv::waitKey(1);
+
+	int randomNum = std::rand() % 10;
+	static int img_no = 0;
+
+	const auto create_random_train_imgs = [&](
+		const std::vector<cv::Rect>& rects, 
+		const std::string& folder_name) 
+	{
+		for (auto rect : rects)
+		{
+			int sampleNum = 3;
+			while (sampleNum-- > 0)
+			{
+				auto part = CreateRandomRect(img, rect, imgRect);
+				std::stringstream ss;
+				ss << folder_name << img_no++ << ".jpg";
+				auto file_path = ss.str();
+				cv::imwrite(file_path, part);
+			}
+		}
+	};
+
+	const auto create_random_test_imgs = [&](
+		const std::vector<cv::Rect>& rects, 
+		const std::string& folder_name) 
+	{
+		for (auto rect : rects)
+		{
+			auto part = img(rect);
+			std::stringstream ss;
+			ss << folder_name << img_no++ << ".jpg";
+			auto file_path = ss.str();
+			cv::imwrite(file_path, part);
+		}
+	};
+
+	auto lession_train_path = TrainImgSaveRoot + "1_lession\\";
+	auto nonlession_train_path = TrainImgSaveRoot + "0_nonlession\\";
+	auto lession_test_path = TestImgSaveRoot + "1_lession\\";
+	auto nonlession_test_path = TestImgSaveRoot + "0_nonlession\\";
+
+	Check_Create_Path(lession_train_path);
+	Check_Create_Path(nonlession_train_path);
+	Check_Create_Path(lession_test_path);
+	Check_Create_Path(nonlession_test_path);
+
+	if (randomNum < 7)
+	{
+		// train set
+		create_random_train_imgs(lessionsRects, lession_train_path);
+		create_random_train_imgs(nonLessionsRects, nonlession_train_path);
+	}
+	else 
+	{
+		//test set
+		create_random_test_imgs(lessionsRects, lession_test_path);
+		create_random_test_imgs(nonLessionsRects, nonlession_test_path);
+	}
+}
+
 void main(int argc, char** argv)
 {
 	if (SYY::SYY_NO_ERROR != SYY::InitSDK())
@@ -2107,14 +3128,20 @@ void main(int argc, char** argv)
 		return;
 	}
 
-	if (SYY::SYY_NO_ERROR != SYY::MedicalAnalysis::InitBUAnalysis(hHandleBUAnalysis, SYY::MedicalAnalysis::Crop_V1))
+	if (SYY::SYY_NO_ERROR != SYY::MedicalAnalysis::InitBUAnalysis(hHandleBUAnalysis, SYY::MedicalAnalysis::Crop_V2 | SYY::MedicalAnalysis::DetectAccurate))
 	{
 		std::cerr << "InitBUAnalysis error!\n" << std::endl;
 		return;
 	}
 
+	//if (SYY::SYY_NO_ERROR != SYY::MedicalAnalysis::InitBUAnalysis(hHandleBUAnalysis2, SYY::MedicalAnalysis::Crop_V2))
+	//{
+	//	std::cerr << "InitBUAnalysis error!\n" << std::endl;
+	//	return;
+	//}
+
 	//argc = 2;
-	//argv[1] = "D:\\blue\\data\\训练文件\\test\\";
+	//argv[1] = "D:\\blue\\codes\\TagTools\\x64\\标注工具\\RectTxt\\";
 	//ProcessAllFile(argc, argv, ParseTxt);
 
 	//argc = 2;
@@ -2166,13 +3193,38 @@ void main(int argc, char** argv)
 	//argv[1] = "D:\\blue\\data\\训练文件\\检测病灶\\imgs\\";
 	//ProcessAllFile(argc, argv, DetectNode);
 
-	argc = 2;
-	argv[1] = "D:\\blue\\codes\\TagTools\\x64\\标注工具\\RectTxt\\";
-	ProcessAllFile(argc, argv, Create_VOC_Annots_With_Filter);
+	//argc = 2;
+	//argv[1] = "D:\\blue\\codes\\TagTools\\x64\\标注工具\\RectTxt\\";
+	//ProcessAllFile(argc, argv, Create_VOC_Annots_With_Filter);
+
+	//argc = 2;
+	//argv[1] = "D:\\blue\\codes\\TagTools\\x64\\标注工具\\RectTxt\\";
+	//ProcessAllFile(argc, argv, Create_VOC_Annots_ImgBox);
 
 	//argc = 2;
 	//argv[1] = "D:\\blue\\codes\\TagTools\\x64\\标注工具\\RectTxt\\";
 	//ProcessAllFile(argc, argv, GenerateAdditionRect);
+
+	//argc = 2;
+	//argv[1] = "D:\\blue\\codes\\TagTools\\x64\\标注工具\\RectTxt\\";
+	//ProcessAllFile(argc, argv, GetTestImg);
+
+	//argc = 2;
+	//argv[1] = "D:\\blue\\codes\\TagTools\\x64\\标注工具\\RectTxt\\";
+	//ProcessAllFile(argc, argv, GradingClassify4FullImage);
+
+	//argc = 2;
+	////argv[1] = "D:\\blue\\codes\\TagTools\\x64\\标注工具\\RectTxt\\";
+	//argv[1] = "D:\\blue\\codes\\TagTools\\x64\\旧标注工具\\RectTxt\\";
+	//ProcessAllFile(argc, argv, AddLessionAttrInfo);
+
+	argc = 2;
+	argv[1] = "D:\\blue\\codes\\TagTools\\x64\\标注工具\\RectTxt\\";
+	ProcessAllFile(argc, argv, TestAcc, 0, true);
+
+	//argc = 2;
+	//argv[1] = "D:\\blue\\codes\\TagTools\\x64\\标注工具\\RectTxt\\";
+	//ProcessAllFile(argc, argv, GetTrueFalseRegion);
 
 	//cv::Mat m = cv::Mat::zeros(3, 3, CV_8UC1);
 	//cv::Mat h, v;
@@ -2183,6 +3235,8 @@ void main(int argc, char** argv)
 	//std::cout << m << std::endl;
 	//std::cout << h << std::endl;
 	//std::cout << v << std::endl;
+
+	//SYY::MedicalAnalysis::ReleaseBUAnalysis(hHandleBUAnalysis2);
 	SYY::MedicalAnalysis::ReleaseBUAnalysis(hHandleBUAnalysis);
 	SYY::ReleaseSDK();
 

@@ -247,6 +247,105 @@ bool ParseTxtInfo(
 	return true;
 }
 
+bool ParseTxtInfo(
+	const std::string& txtFile, 
+	std::vector<std::vector<cv::Rect2f>>& vPtsRects, 
+	std::vector<cv::Rect2f>& vImgRects, 
+	std::vector<cv::Rect2f>& vAddRects, 
+	std::map<std::string, std::string>& mAttrs,
+	std::string& relativePath, std::string& errorMsg /*= std::string("") */)
+{
+	std::ifstream in(txtFile);
+	if (false == in.is_open())
+	{
+		errorMsg = "can not open txt: " + txtFile;
+		return false;
+	}
+
+	std::string line;
+	std::vector<std::string> lines;
+	std::stringstream ss;
+	std::string str;
+
+	while (getline(in, line))
+		lines.push_back(line);
+
+	if (lines.size() < 3)
+	{
+		errorMsg = "error when parse txt: " + txtFile;
+		return false;
+	}
+
+	relativePath = lines[0];
+
+	mAttrs.clear();
+	ss.str("");
+	ss << lines[1];
+	while (ss >> str)
+	{
+		int idx = str.find(':');
+		std::string k = str.substr(0, idx);
+		std::string v = str.substr(idx+1);
+		mAttrs[k] = v;
+	}
+
+	int nRectCount = atoi(lines[2].c_str());
+
+	//std::vector<std::vector<cv::Point>> vPtss;
+	vPtsRects.clear();
+	vAddRects.clear();
+
+	for (int i = 0; i < nRectCount; i++)
+	{
+		std::vector<cv::Rect2f> rects;
+		std::vector<std::string> words;
+
+		line = lines[i + 3];
+
+		ss.str("");
+		ss.clear();
+		ss << line;
+
+		while (ss >> str)
+			words.push_back(str);
+
+		if (words.size() == 0)
+			return false;
+
+		if (words[0] == "r") {
+			float x = atof(words[1].c_str());
+			float y = atof(words[2].c_str());
+			float w = atof(words[3].c_str());
+			float h = atof(words[4].c_str());
+
+			vImgRects.push_back(cv::Rect2f(x, y, w, h));
+		}
+		else if (words[0] == "a") {
+			float x = atof(words[1].c_str());
+			float y = atof(words[2].c_str());
+			float w = atof(words[3].c_str());
+			float h = atof(words[4].c_str());
+
+			vAddRects.push_back(cv::Rect2f(x, y, w, h));
+		}
+		else {
+			for (auto word : words) {
+				int idx1 = word.find(',');
+				int idx2 = word.find(',', idx1 + 1);
+				int idx3 = word.find(',', idx2 + 1);
+				float x = atof(word.substr(0, idx1).c_str());
+				float y = atof(word.substr(idx1 + 1, idx2 - idx1).c_str());
+				float w = atof(word.substr(idx2 + 1, idx3 - idx2).c_str());
+				float h = atof(word.substr(idx3 + 1).c_str());
+				rects.push_back(cv::Rect2f(x, y, w, h));
+			}
+			vPtsRects.push_back(rects);
+		}
+	}
+
+	return true;
+}
+
 bool SaveInfo2Txt(
 	const std::vector<std::vector<cv::Point>>& vPtss, 
 	const std::vector<cv::Rect>& vRects, 
@@ -401,6 +500,88 @@ bool SaveInfo2Txt(
 	std::ofstream out(txtPath);
 
 	out << relativePath << '\n';
+	out << vPtsRects.size() + vImgRects.size() + vAddRects.size() << '\n';
+
+	for (const auto& rect : vImgRects)
+	{
+		out << "r "
+			<< rect.x << " " << rect.y << " "
+			<< rect.width << " " << rect.height << "\n";
+	}
+
+	for (const auto& vRects : vPtsRects)
+	{
+		for (const auto& rect : vRects)
+		{
+			out << rect.x << "," << rect.y << "," << rect.width << "," << rect.height << " ";
+		}
+		out << '\n';
+	}
+
+	for (const auto& rect : vAddRects)
+	{
+		out << "a "
+			<< rect.x << " " << rect.y << " "
+			<< rect.width << " " << rect.height << "\n";
+	}
+
+	return true;
+}
+
+bool SaveInfo2Txt(
+	const std::vector<std::vector<cv::Rect2f>>& vPtsRects, 
+	const std::vector<cv::Rect2f>& vImgRects, 
+	std::vector<cv::Rect2f>& vAddRects, 
+	const std::map<std::string, std::string>& mAttrs,
+	const std::string& relativePath, 
+	const std::string& txtRoot, 
+	std::string& txtFile, 
+	std::string& errorMsg /*= std::string("") */)
+{
+	int idx = relativePath.rfind('\\');
+
+	std::string parentPath = "";
+	std::string filename = "";
+
+	std::stringstream ss;
+
+	if (idx != -1)
+	{
+		parentPath = relativePath.substr(0, idx);
+		filename = relativePath.substr(idx + 1, relativePath.find_last_of('.') - idx - 1);
+		ss << txtRoot << "\\" << parentPath;
+	}
+	else {
+		filename = relativePath.substr(0, relativePath.find_last_of('.') - idx - 1);
+		ss << txtRoot;
+	}
+
+	std::string txtPath = ss.str();
+
+	if (false == boost::filesystem::exists(txtPath))
+	{
+		boost::filesystem::create_directories(txtPath);
+	}
+
+	txtPath += "\\" + filename + ".txt";
+
+	if (vPtsRects.size() == 0 && vImgRects.size() == 0 && vAddRects.size() == 0)
+	{
+		boost::filesystem::remove(txtPath);
+		errorMsg = "no rect in image!";
+		return false;
+	}
+
+	std::ofstream out(txtPath);
+
+	out << relativePath << '\n';
+
+	for (auto p : mAttrs)
+	{
+		out << p.first << ":" << p.second << " ";
+	}
+	out << "\n";
+
 	out << vPtsRects.size() + vImgRects.size() + vAddRects.size() << '\n';
 
 	for (const auto& rect : vImgRects)

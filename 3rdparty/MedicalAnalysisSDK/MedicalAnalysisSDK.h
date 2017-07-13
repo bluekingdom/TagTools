@@ -84,19 +84,42 @@ namespace Inpainting{
 
 namespace MedicalAnalysis {
 
+	enum LessionGrading
+	{
+		LG1a = 0,
+		LG_OTHER = 1,
+		//LG4a = 2,
+		//LG4b = 3,
+		//LG4c = 4,
+		//LG5 = 5,
+		//LG6 = 6,
+	};
+	enum LessionType
+	{
+		NO_LESSION = 0,
+		LESSION = 1,
+	};
+
 	struct BUAnalysisResult {
 		BUAnalysisResult() : pLessionRects(nullptr), nLessionsCount(0) {}
 
 		Rect rCropRect;				// 有效图片区域
 
+		LessionGrading nGrading;	// 病况分级
+
 		int nLessionsCount;			// 病灶数量
 		Rect* pLessionRects;		// 病灶区域
+		float* pLessionConfidence;	// 病灶置信值
+		LessionType* pLessionTypes;	// 病灶类型
 	};
 
 	enum BUAnalysisMode{
 		None = 0x1,
 		Crop_V1 = 0x2,
 		Crop_V2 = 0x4,
+		Crop_V3 = 0x8,
+		DetectMore = 0x10,
+		DetectAccurate = 0x20,
 	};
 
 

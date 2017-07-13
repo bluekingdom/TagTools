@@ -80,6 +80,14 @@ BEGIN_MESSAGE_MAP(CTagToolsDlg, CDialogEx)
 	ON_WM_KEYUP()
 	ON_WM_CHAR()
 	ON_WM_MOUSEMOVE()
+	ON_BN_CLICKED(IDC_RADIO_ALL, &CTagToolsDlg::OnClickedRadioAll)
+	ON_BN_CLICKED(IDC_RADIO_HASINFO, &CTagToolsDlg::OnBnClickedRadioHasinfo)
+	ON_BN_CLICKED(IDC_RADIO_HASADDRECT, &CTagToolsDlg::OnBnClickedRadioHasaddrect)
+	ON_BN_CLICKED(IDC_RADIO_TYPE_NONE, &CTagToolsDlg::OnBnClickedRadioTypeNone)
+	ON_BN_CLICKED(IDC_RADIO_TYPE_LESSION, &CTagToolsDlg::OnBnClickedRadioTypeLession)
+	ON_BN_CLICKED(IDC_RADIO_TYPE_Lymphaden, &CTagToolsDlg::OnBnClickedRadioTypeLymphaden)
+	ON_BN_CLICKED(IDC_RADIO_HASCROSSRECT, &CTagToolsDlg::OnBnClickedRadioHascrossrect)
+	ON_BN_CLICKED(IDC_RADIO_HASRECT2, &CTagToolsDlg::OnBnClickedRadioHasrect2)
 END_MESSAGE_MAP()
 
 
@@ -123,8 +131,16 @@ BOOL CTagToolsDlg::OnInitDialog()
 
 	m_bEditMode = false;
 	m_bAddMode = false;
+	m_nLessionAttr = None;
+	m_bFullImg = false;
+	m_mLessionTypes = std::map<std::string, LessionType>{
+		{ "0", None }, { "1", HasLession }, { "2", Lymphaden }
+	};
+	m_nImgListRadioType = ALL;
+	((CButton*)GetDlgItem(IDC_RADIO_ALL))->SetCheck(1);
 
 	ShowMode();
+	ShowLenssionAttr();
 
 	return TRUE;  // 除非将焦点设置到控件，否则返回 TRUE
 }
@@ -180,26 +196,26 @@ HCURSOR CTagToolsDlg::OnQueryDragIcon()
 
 void CTagToolsDlg::OnBnClickedButton1()
 {
-	// TODO:  在此添加控件通知处理程序代码
-	setlocale(LC_ALL, "Chinese-simplified");
+	char szPath[MAX_PATH];     //存放选择的目录路径
 
-	CString FilePathName;
-	CEdit* pBoxOne;
-	pBoxOne = (CEdit*)GetDlgItem(IDC_EDIT1);
-	pBoxOne->GetWindowText(FilePathName);
+	BROWSEINFO bi;
+	bi.hwndOwner = m_hWnd;
+	bi.pidlRoot = NULL;
+	bi.pszDisplayName = szPath;
+	bi.lpszTitle = "请选择需要打开的目录：";
+	bi.ulFlags = 0;
+	bi.lpfn = NULL;
+	bi.lParam = 0;
+	bi.iImage = 0;
+	//弹出选择目录对话框
+	LPITEMIDLIST lp = SHBrowseForFolder(&bi);
+	SHGetPathFromIDList(lp, szPath);
 
-	if (LoadMatFromRoot(FilePathName.GetString()))
+	CString folderRootPath = szPath;
+
+	if (LoadMatFromRoot(folderRootPath.GetString()))
 	{
-		RefreshListBox();
-		for (int i = m_vTagged.size() - 1; i >= 0; i--)
-		{
-			if (true == m_vTagged[i])
-			{
-				m_nCurFileIdx = std::min(int(m_vTagged.size()) - 1, i + 1);
-				break;
-			}
-		}
-		PostChangeSel();
+		RefreshImgList();
 	}
 	else {
 		return;
@@ -214,6 +230,9 @@ bool CTagToolsDlg::LoadMatFromRoot(const std::string& root)
 	std::vector<std::string> vFiles;
 
 	scanFilesUseRecursive(m_sDicomRoot, vFiles);
+
+	m_vFiles.clear();
+	m_vTagged.clear();
 
 	int nFilesLen = vFiles.size();
 	if (nFilesLen == 0)
@@ -240,14 +259,11 @@ bool CTagToolsDlg::LoadMatFromRoot(const std::string& root)
 			continue;
 		}
 
-		//cv::Mat img = cv::imread(file);
-		//if (img.empty()) continue;
 
 		m_vFiles.push_back(file);
-		//m_vMats.push_back(img);
 	}
 
-	RefreshTagged();
+	m_vFilesOrigin = vFiles;
 
 	if (m_vFiles.size() == 0)
 	{
@@ -327,7 +343,7 @@ bool CTagToolsDlg::ShowCurSelImg()
 
 	cv::Mat resize_img;
 
-	if (m_vValidRects.size() == 1)
+	if (m_vValidRects.size() == 1 && m_bFullImg == false)
 	{
 		img = img(m_vValidRects[0]);
 	}
@@ -465,6 +481,12 @@ void CTagToolsDlg::OnLButtonDown(UINT nFlags, CPoint point)
 {
 	// TODO:  在此添加消息处理程序代码和/或调用默认值
 
+	if (m_mResizeImg.empty())
+	{
+		MessageBox("请先点击图片列表!");
+		return;
+	}
+
 	m_pBegPt = point;
 	m_bIsLBPushing = true;
 	m_bIsMouseMoving = false;
@@ -474,17 +496,24 @@ void CTagToolsDlg::OnLButtonDown(UINT nFlags, CPoint point)
 
 void CTagToolsDlg::OnLButtonUp(UINT nFlags, CPoint point)
 {
-	// TODO:  在此添加消息处理程序代码和/或调用默认值
+	bool lastMouseMoveState = m_bIsMouseMoving;
+
+	m_bIsLBPushing = false;
+	m_bIsMouseMoving = false;
+
+	//if (m_nLessionAttr == None)
+	//{
+	//	MessageBox("请先选择属性：j->无，k->病灶，l->淋巴结");
+	//	return;
+	//}
 
 	if (m_mResizeImg.empty())
 	{
-		MessageBox("请先点击图片列表!");
-		m_bIsLBPushing = false;
-		m_bIsMouseMoving = false;
+		Redraw();
 		return;
 	}
 
-	if (true == m_bIsMouseMoving)
+	if (true == lastMouseMoveState)
 	{
 		if (false == m_bEditMode)
 		{
@@ -495,9 +524,6 @@ void CTagToolsDlg::OnLButtonUp(UINT nFlags, CPoint point)
 			ReplaceRect(m_pBegPt, m_pCurPt);
 		}
 	}
-
-	m_bIsLBPushing = false;
-	m_bIsMouseMoving = false;
 
 	RefreshRectList();
 	Redraw();
@@ -647,7 +673,7 @@ void CTagToolsDlg::OnBnClickedOk()
 	if (m_vValidRects.size() == 0 && m_vClickPointRects.size() == 1)
 	{
 		m_vValidRects.push_back(m_vClickPointRects[0]);
-		if (m_vValidRects.size() == 1)
+		if (m_vValidRects.size() == 1 && m_bFullImg == false)
 		{
 			for (auto& vRect : m_vPointRectVecs)
 			{
@@ -721,7 +747,7 @@ void CTagToolsDlg::Redraw()
 
 	DrawDragRect(img);
 
-	if (m_vValidRects.size() != 1)
+	if (m_vValidRects.size() != 1 || m_bFullImg)
 		DrawRects(img, 0);
 
 	int offset = m_vValidRects.size();
@@ -736,10 +762,8 @@ void CTagToolsDlg::Redraw()
 bool CTagToolsDlg::SaveRect2Txt()
 {
 	const std::string txtRoot = "RectTxt";
-	if (m_vPointRectVecs.size() + m_vValidRects.size() == 0)
-	{
-		return false;
-	}
+
+	//if (m_vPointRectVecs.size() + m_vValidRects.size() + m_vAdditionRects.size() == 0) return false;
 
 	//CListBox* listbox = (CListBox*)GetDlgItem(IDC_LIST_FILELIST);
 	//int idx = listbox->GetCurSel();
@@ -747,6 +771,8 @@ bool CTagToolsDlg::SaveRect2Txt()
 
 	if (idx < 0)
 		return false;
+
+	//if (m_vValidRects.size() == 0 && m_vPointRectVecs.size() == 0 && m_vAdditionRects.size() == 0) return false;
 
 	auto file = m_vFiles[idx];
 
@@ -756,7 +782,7 @@ bool CTagToolsDlg::SaveRect2Txt()
 	auto vPointRectVecs = m_vPointRectVecs;
 	auto vAdditionRects = m_vAdditionRects;
 
-	if (vValidRects.size() == 1)
+	if (vValidRects.size() == 1 && m_bFullImg == false)
 	{
 		for (auto& vRect : vPointRectVecs)
 		{
@@ -773,10 +799,13 @@ bool CTagToolsDlg::SaveRect2Txt()
 		}
 	}
 
+	std::map<std::string, std::string> mAttrs;
+	mAttrs["LessionType"] = '0' + int(m_nLessionAttr);
+
 	std::string txtFilePath, errorMsg;
-	if (false == SaveInfo2Txt(vPointRectVecs, vValidRects, vAdditionRects, relativePath, txtRoot, txtFilePath, errorMsg))
+	if (false == SaveInfo2Txt(vPointRectVecs, vValidRects, vAdditionRects, mAttrs, relativePath, txtRoot, txtFilePath, errorMsg))
 	{
-		MessageBox(errorMsg.c_str());
+		//MessageBox(errorMsg.c_str());
 		return false;
 	}
 
@@ -789,6 +818,8 @@ void CTagToolsDlg::ResetRectInfo()
 	m_vClickPointRects.clear();
 	m_vValidRects.clear();
 	m_vAdditionRects.clear();
+	m_nLessionAttr = None;
+	ShowLenssionAttr();
 }
 
 void CTagToolsDlg::OnBnClickedButtonDel()
@@ -808,7 +839,7 @@ void CTagToolsDlg::OnBnClickedButtonDel()
 	int nPtsRectLen = m_vPointRectVecs.size();
 
 	if (idx < nRectLen) {
-		if (nRectLen == 1)
+		if (nRectLen == 1 && m_bFullImg == false)
 		{
 			for (auto& vRect : m_vPointRectVecs)
 			{
@@ -919,39 +950,44 @@ bool CTagToolsDlg::LoadExistTxt(int curIdx)
 	std::vector<std::vector<cv::Rect2f>> vPtsRects;
 	std::vector<cv::Rect2f> vImgRects, vAddRects;
 	std::string relativePathFromInfo, errorMsg;
+	std::map<std::string, std::string> mAttr;
 
-	if (false == ParseTxtInfo(rectTxtFile, vPtsRects, vImgRects, vAddRects, relativePathFromInfo, errorMsg))
+	if (false == ParseTxtInfo(rectTxtFile, vPtsRects, vImgRects, vAddRects, mAttr, relativePathFromInfo, errorMsg))
 	{
 		MessageBox(errorMsg.c_str());
 		return false;
 	}
 
-	if (vImgRects.size() == 1)
-	{
-		auto imgRect = vImgRects[0];
-		for (auto iter = vAddRects.begin(); iter != vAddRects.end();)
-		{
-			auto& rect = *iter;
-			int reduce = 2;
-			while (reduce-- > 0 &&
-				(false == imgRect.contains(rect.tl()) || false == imgRect.contains(rect.br())))
-			{
-				rect.x -= imgRect.x;
-				rect.y -= imgRect.y;
-			}
+	// 修复坐标溢出
+	//if (vImgRects.size() == 1)
+	//{
+	//	auto imgRect = vImgRects[0];
+	//	for (auto iter = vAddRects.begin(); iter != vAddRects.end();)
+	//	{
+	//		auto& rect = *iter;
+	//		int reduce = 2;
+	//		while (reduce-- > 0 &&
+	//			(false == imgRect.contains(rect.tl()) || false == imgRect.contains(rect.br())))
+	//		{
+	//			if (m_bFullImg == false)
+	//			{
+	//				rect.x -= imgRect.x;
+	//				rect.y -= imgRect.y;
+	//			}
+	//		}
 
-			if (false == imgRect.contains(rect.tl()) || false == imgRect.contains(rect.br()))
-			{
-				iter = vAddRects.erase(iter);
-			}
-			else
-			{
-				iter++;
-			}
-		}
-	}
+	//		if (false == imgRect.contains(rect.tl()) || false == imgRect.contains(rect.br()))
+	//		{
+	//			iter = vAddRects.erase(iter);
+	//		}
+	//		else
+	//		{
+	//			iter++;
+	//		}
+	//	}
+	//}
 
-	if (vImgRects.size() == 1)
+	if (vImgRects.size() == 1 && m_bFullImg == false)
 	{
 		for (auto& vRect : vPtsRects)
 		{
@@ -966,6 +1002,14 @@ bool CTagToolsDlg::LoadExistTxt(int curIdx)
 		{
 			rect.x -= vImgRects[0].x;
 			rect.y -= vImgRects[0].y;
+		}
+	}
+
+	for (auto p : mAttr)
+	{
+		if (p.first == "LessionType")
+		{
+			m_nLessionAttr = m_mLessionTypes.find(p.second)->second;
 		}
 	}
 
@@ -1075,6 +1119,30 @@ BOOL CTagToolsDlg::PreTranslateMessage(MSG* pMsg)
 			m_bAddMode = !m_bAddMode;
 			ShowMode();
 		}
+		else if (nChar == 'k' || nChar == 'K')
+		{
+			m_nLessionAttr = HasLession;
+			ShowLenssionAttr();
+		}
+		else if (nChar == 'l' || nChar == 'L')
+		{
+			m_nLessionAttr = Lymphaden;
+			ShowLenssionAttr();
+		}
+		else if (nChar == 'j' || nChar == 'J')
+		{
+			m_nLessionAttr = None;
+			ShowLenssionAttr();
+		}
+		else if (nChar == 'f' || nChar == 'F')
+		{
+			if (SaveRect2Txt())
+			{
+				m_bFullImg = !m_bFullImg;
+				ShowMode();
+				PostChangeSel();
+			}
+		}
 
 		//keyCode.Format("%c", nChar);
 		//keyCode.MakeLower();
@@ -1119,7 +1187,9 @@ BOOL CTagToolsDlg::PreTranslateMessage(MSG* pMsg)
 void CTagToolsDlg::PreChangeSel()
 {
 	if (true == SaveRect2Txt())
+	{
 		m_vTagged[m_nCurFileIdx] = true;
+	}
 
 	RefreshCurListString();
 }
@@ -1134,6 +1204,7 @@ void CTagToolsDlg::PostChangeSel()
 		RefreshCurListString();
 	}
 
+	ShowLenssionAttr();
 	ShowCurSelImg();
 
 	CListBox* listbox = (CListBox*)GetDlgItem(IDC_LIST_FILELIST);
@@ -1148,28 +1219,7 @@ void CTagToolsDlg::PostChangeSel()
 
 void CTagToolsDlg::RefreshTagged()
 {
-	//std::vector<std::string> files;
-	m_vTagged.resize(m_vFiles.size());
 
-	for (int n = 0; n < m_vFiles.size(); n++)
-	{
-		if (LoadExistTxt(n))
-		{
-			m_vTagged[n] = true;
-			//files.push_back(m_vFiles[n]);
-		}
-	}
-
-	//m_vFiles = files;
-	//m_vTagged.resize(m_vFiles.size());
-
-	//for (int n = 0; n < m_vFiles.size(); n++)
-	//{
-	//	if (LoadExistTxt(n))
-	//	{
-	//		m_vTagged[n] = true;
-	//	}
-	//}
 }
 
 void CTagToolsDlg::DrawDragRect(cv::Mat& drawing)
@@ -1433,7 +1483,12 @@ void CTagToolsDlg::ReplaceRect(CPoint p1, CPoint p2)
 void CTagToolsDlg::RefreshTxtInfo()
 {
 	if (true == SaveRect2Txt())
+	{
 		m_vTagged[m_nCurFileIdx] = true;
+	}
+	else {
+		m_vTagged[m_nCurFileIdx] = false;
+	}
 
 	PostChangeSel();
 }
@@ -1455,7 +1510,14 @@ void CTagToolsDlg::ShowMode()
 		text += "新增";
 	}
 
+	if (m_bFullImg == true)
+	{
+		text += " - 全图";
+	}
+
 	GetDlgItem(IDC_LABEL_MODE)->SetWindowText(text.c_str());
+
+
 }
 
 void CTagToolsDlg::DrawAdditionRects(cv::Mat& srcImg, int id_offset /*= 0*/)
@@ -1473,5 +1535,355 @@ void CTagToolsDlg::DrawAdditionRects(cv::Mat& srcImg, int id_offset /*= 0*/)
 		cv::putText(srcImg, ss.str(), cv::Point(rect.x, rect.y - 2), 1, 1, cv::Scalar(255, 255, 255));
 		cv::rectangle(srcImg, rect, cv::Scalar(255, 255, 0), 1);
 	}
+}
+
+void CTagToolsDlg::GetTestImg()
+{
+	std::vector<std::string> files;
+	m_vTagged.resize(m_vFiles.size());
+
+	for (int n = 0; n < m_vFiles.size(); n++)
+	{
+		LoadExistTxt(n);
+
+		if (m_vAdditionRects.size() != 0 && m_vPointRectVecs.size() == 0)
+		{
+			files.push_back(m_vFiles[n]);
+		}
+	}
+
+	m_vFiles = files;
+	m_vTagged.resize(m_vFiles.size());
+
+	for (int n = 0; n < m_vFiles.size(); n++)
+	{
+		if (LoadExistTxt(n))
+		{
+			m_vTagged[n] = true;
+		}
+	}
+}
+
+void CTagToolsDlg::GetHasTxtInfoImg()
+{
+	std::vector<std::string> files;
+	m_vTagged.resize(m_vFiles.size());
+
+	for (int n = 0; n < m_vFiles.size(); n++)
+	{
+		if (LoadExistTxt(n))
+		{
+			files.push_back(m_vFiles[n]);
+		}
+	}
+
+	m_vFiles = files;
+	m_vTagged.clear();
+	m_vTagged.resize(m_vFiles.size());
+
+	for (int n = 0; n < m_vFiles.size(); n++)
+	{
+		if (LoadExistTxt(n))
+		{
+			m_vTagged[n] = true;
+		}
+	}
+}
+
+
+
+void CTagToolsDlg::GetAllImg()
+{
+	m_vTagged.resize(m_vFiles.size());
+
+	for (int n = 0; n < m_vFiles.size(); n++)
+	{
+		if (LoadExistTxt(n))
+		{
+			m_vTagged[n] = true;
+		}
+	}
+}
+
+void CTagToolsDlg::ShowLenssionAttr()
+{
+	std::string text = "";
+	switch (m_nLessionAttr)
+	{
+	case CTagToolsDlg::None:
+		text = "无";
+		break;
+	case CTagToolsDlg::HasLession:
+		text = "病灶";
+		break;
+	case CTagToolsDlg::Lymphaden:
+		text = "淋巴结";
+		break;
+	default:
+		break;
+	}
+
+	GetDlgItem(IDC_TEXT_LESSION_ATTR)->SetWindowText(text.c_str());
+}
+
+void CTagToolsDlg::GetHasRectsImg()
+{
+	std::vector<std::string> files;
+	m_vTagged.resize(m_vFiles.size());
+
+	for (int n = 0; n < m_vFiles.size(); n++)
+	{
+		if (true == LoadExistTxt(n) && (m_vAdditionRects.size() != 0 || m_vPointRectVecs.size() != 0))
+		{
+			files.push_back(m_vFiles[n]);
+		}
+	}
+
+	m_vFiles = files;
+	m_vTagged.resize(m_vFiles.size());
+
+	for (int n = 0; n < m_vFiles.size(); n++)
+	{
+		if (LoadExistTxt(n))
+		{
+			m_vTagged[n] = true;
+		}
+	}
+}
+
+void CTagToolsDlg::GetHasCrossRectsImg()
+{
+	std::vector<std::string> files;
+	m_vTagged.resize(m_vFiles.size());
+
+	for (int n = 0; n < m_vFiles.size(); n++)
+	{
+		if (true == LoadExistTxt(n) && m_vPointRectVecs.size() != 0)
+		{
+			files.push_back(m_vFiles[n]);
+		}
+	}
+
+	m_vFiles = files;
+	m_vTagged.resize(m_vFiles.size());
+
+	for (int n = 0; n < m_vFiles.size(); n++)
+	{
+		if (LoadExistTxt(n))
+		{
+			m_vTagged[n] = true;
+		}
+	}
+}
+
+void CTagToolsDlg::GetHasAddRectsImg()
+{
+	std::vector<std::string> files;
+	m_vTagged.resize(m_vFiles.size());
+
+	for (int n = 0; n < m_vFiles.size(); n++)
+	{
+		if (true == LoadExistTxt(n) && (m_vAdditionRects.size() != 0))
+		{
+			files.push_back(m_vFiles[n]);
+		}
+	}
+
+	m_vFiles = files;
+	m_vTagged.resize(m_vFiles.size());
+
+	for (int n = 0; n < m_vFiles.size(); n++)
+	{
+		if (LoadExistTxt(n))
+		{
+			m_vTagged[n] = true;
+		}
+	}
+}
+
+void CTagToolsDlg::GetTypeNoneImg()
+{
+	std::vector<std::string> files;
+	m_vTagged.resize(m_vFiles.size());
+
+	for (int n = 0; n < m_vFiles.size(); n++)
+	{
+		if (true == LoadExistTxt(n) && (m_nLessionAttr == None))
+		{
+			files.push_back(m_vFiles[n]);
+		}
+	}
+
+	m_vFiles = files;
+	m_vTagged.resize(m_vFiles.size());
+
+	for (int n = 0; n < m_vFiles.size(); n++)
+	{
+		if (LoadExistTxt(n))
+		{
+			m_vTagged[n] = true;
+		}
+	}
+}
+
+void CTagToolsDlg::GetTypeLessionImg()
+{
+	std::vector<std::string> files;
+	m_vTagged.resize(m_vFiles.size());
+
+	for (int n = 0; n < m_vFiles.size(); n++)
+	{
+		if (true == LoadExistTxt(n) && (m_nLessionAttr == HasLession))
+		{
+			files.push_back(m_vFiles[n]);
+		}
+	}
+
+	m_vFiles = files;
+	m_vTagged.resize(m_vFiles.size());
+
+	for (int n = 0; n < m_vFiles.size(); n++)
+	{
+		if (LoadExistTxt(n))
+		{
+			m_vTagged[n] = true;
+		}
+	}
+}
+
+void CTagToolsDlg::GetTypeLymphadenImg()
+{
+	std::vector<std::string> files;
+	m_vTagged.resize(m_vFiles.size());
+
+	for (int n = 0; n < m_vFiles.size(); n++)
+	{
+		if (true == LoadExistTxt(n) && (m_nLessionAttr == Lymphaden))
+		{
+			files.push_back(m_vFiles[n]);
+		}
+	}
+
+	m_vFiles = files;
+	m_vTagged.resize(m_vFiles.size());
+
+	for (int n = 0; n < m_vFiles.size(); n++)
+	{
+		if (LoadExistTxt(n))
+		{
+			m_vTagged[n] = true;
+		}
+	}
+}
+
+void CTagToolsDlg::OnClickedRadioAll()
+{
+	// TODO:  在此添加控件通知处理程序代码
+	m_nImgListRadioType = ALL;
+	RefreshImgList();
+}
+
+
+void CTagToolsDlg::OnBnClickedRadioHasinfo()
+{
+	// TODO:  在此添加控件通知处理程序代码
+	m_nImgListRadioType = HAS_INFO;
+	RefreshImgList();
+}
+
+
+void CTagToolsDlg::OnBnClickedRadioHasaddrect()
+{
+	// TODO:  在此添加控件通知处理程序代码
+	m_nImgListRadioType = HAS_ADD_RECT;
+	RefreshImgList();
+}
+
+
+void CTagToolsDlg::OnBnClickedRadioTypeNone()
+{
+	// TODO:  在此添加控件通知处理程序代码
+	m_nImgListRadioType = LESSION_TYPE_NONE;
+	RefreshImgList();
+}
+
+
+void CTagToolsDlg::OnBnClickedRadioTypeLession()
+{
+	// TODO:  在此添加控件通知处理程序代码
+	m_nImgListRadioType = LESSION_TYPE_LESSION;
+	RefreshImgList();
+}
+
+
+void CTagToolsDlg::OnBnClickedRadioTypeLymphaden()
+{
+	// TODO:  在此添加控件通知处理程序代码
+	m_nImgListRadioType = LESSION_TYPE_LYMPHADEN;
+	RefreshImgList();
+}
+
+void CTagToolsDlg::OnBnClickedRadioHascrossrect()
+{
+	// TODO:  在此添加控件通知处理程序代码
+	m_nImgListRadioType = HAS_CROSS_RECT;
+	RefreshImgList();
+}
+
+void CTagToolsDlg::OnBnClickedRadioHasrect2()
+{
+	// TODO:  在此添加控件通知处理程序代码
+	m_nImgListRadioType = HAS_RECT;
+	RefreshImgList();
+}
+
+void CTagToolsDlg::RefreshImgList()
+{
+	//if (m_mResizeImg.empty()) return;
+
+	m_vFiles = m_vFilesOrigin;
+
+	switch (m_nImgListRadioType)
+	{
+	case CTagToolsDlg::ALL:
+		GetAllImg();
+		break;
+	case CTagToolsDlg::HAS_INFO:
+		GetHasTxtInfoImg();
+		break;
+	case CTagToolsDlg::HAS_RECT:
+		GetHasRectsImg();
+		break;
+	case CTagToolsDlg::HAS_CROSS_RECT:
+		GetHasCrossRectsImg();
+		break;
+	case CTagToolsDlg::HAS_ADD_RECT:
+		GetHasAddRectsImg();
+		break;
+	case CTagToolsDlg::LESSION_TYPE_NONE:
+		GetTypeNoneImg();
+		break;
+	case CTagToolsDlg::LESSION_TYPE_LESSION:
+		GetTypeLessionImg();
+		break;
+	case CTagToolsDlg::LESSION_TYPE_LYMPHADEN:
+		GetTypeLymphadenImg();
+		break;
+	default:
+		GetAllImg();
+		break;
+	}
+
+	RefreshListBox();
+	m_nCurFileIdx = m_vFiles.size() - 1;
+	for (int i = 0; i < m_vTagged.size(); i++)
+	{
+		if (false == m_vTagged[i])
+		{
+			m_nCurFileIdx = i;
+			break;
+		}
+	}
+	PostChangeSel();
 }
 

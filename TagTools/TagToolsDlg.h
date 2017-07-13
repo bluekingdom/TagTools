@@ -35,6 +35,18 @@ protected:
 public:
 	afx_msg void OnBnClickedButton1();
 
+public:
+	enum LessionType{
+		None = 0, HasLession = 1, Lymphaden = 2,
+	};
+	std::map<std::string, LessionType> m_mLessionTypes;
+
+	enum ImgListRadioType {
+		ALL = 0, HAS_INFO = 1, 
+		HAS_RECT = 2, HAS_CROSS_RECT = 3, HAS_ADD_RECT = 4, 
+		LESSION_TYPE_NONE = 5, LESSION_TYPE_LESSION = 6, LESSION_TYPE_LYMPHADEN = 7,
+	};
+
 protected:
 	bool LoadMatFromRoot(const std::string& root);
 	void RefreshListBox();
@@ -64,16 +76,27 @@ protected:
 	void ReplaceRect(CPoint p1, CPoint p2);
 	void RefreshTxtInfo();
 
-	template<typename T>
-	void ImgRect2SrceenRect(T& rect);
-
-	template<typename T>
-	void ScreenRect2ImgRect(T& rect);
+	template<typename T> void ImgRect2SrceenRect(T& rect);
+	template<typename T> void ScreenRect2ImgRect(T& rect);
 
 	void ShowMode();
+	void ShowLenssionAttr();
+
+	void GetAllImg();
+	void GetTestImg();
+	void GetHasTxtInfoImg();
+	void GetHasRectsImg();
+	void GetHasCrossRectsImg();
+	void GetHasAddRectsImg();
+	void GetTypeNoneImg();
+	void GetTypeLessionImg();
+	void GetTypeLymphadenImg();
+
+	void RefreshImgList();
 
 private:
 	std::string m_sDicomRoot;
+	std::vector<std::string> m_vFilesOrigin;
 	std::vector<std::string> m_vFiles;
 	CRect m_rImageInit;
 	cv::Mat m_mBgMat;
@@ -92,6 +115,11 @@ private:
 	std::vector<cv::Rect2f> m_vValidRects; // 
 	bool m_bEditMode; // 编辑模式
 	bool m_bAddMode; // 附加框模式
+	bool m_bFullImg; // 全图模式
+
+	LessionType m_nLessionAttr;
+
+	ImgListRadioType m_nImgListRadioType;
 
 	const int m_nDragMinArea = 10;
 
@@ -112,4 +140,12 @@ public:
 //	virtual BOOL PreTranslateMessage(MSG* pMsg);
 	virtual BOOL PreTranslateMessage(MSG* pMsg);
 	afx_msg void OnMouseMove(UINT nFlags, CPoint point);
+	afx_msg void OnClickedRadioAll();
+	afx_msg void OnBnClickedRadioHasinfo();
+	afx_msg void OnBnClickedRadioHasaddrect();
+	afx_msg void OnBnClickedRadioTypeNone();
+	afx_msg void OnBnClickedRadioTypeLession();
+	afx_msg void OnBnClickedRadioTypeLymphaden();
+	afx_msg void OnBnClickedRadioHascrossrect();
+	afx_msg void OnBnClickedRadioHasrect2();
 };

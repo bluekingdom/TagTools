@@ -1,5 +1,6 @@
 #include <string>
 #include <vector>
+#include <map>
 #include <opencv2/opencv.hpp>
 
 const std::vector<std::string>& scanFilesUseRecursive(
@@ -54,6 +55,27 @@ bool SaveInfo2Txt(
 	const std::vector<std::vector<cv::Rect2f>>& vPtsRects,
 	const std::vector<cv::Rect2f>& vImgRects,
 	std::vector<cv::Rect2f>& vAddRects,
+	const std::string& relativePath,
+	const std::string& txtRoot,
+	std::string& txtFile,
+	std::string& errorMsg = std::string("")
+	);
+
+bool ParseTxtInfo(
+	const std::string& txtFile,
+	std::vector<std::vector<cv::Rect2f>>& vPtsRects,
+	std::vector<cv::Rect2f>& vImgRects,
+	std::vector<cv::Rect2f>& vAddRects,
+	std::map<std::string, std::string>& mAttr,
+	std::string& relativePath,
+	std::string& errorMsg = std::string("")
+	);
+
+bool SaveInfo2Txt(
+	const std::vector<std::vector<cv::Rect2f>>& vPtsRects,
+	const std::vector<cv::Rect2f>& vImgRects,
+	std::vector<cv::Rect2f>& vAddRects,
+	const std::map<std::string, std::string>& mAttr,
 	const std::string& relativePath,
 	const std::string& txtRoot,
 	std::string& txtFile,

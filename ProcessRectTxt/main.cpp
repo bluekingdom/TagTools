@@ -255,103 +255,112 @@ void ParseTxt(const std::string& txt)
 	cv::waitKey(1);
 }
 
-//
-//void ParseTxtForImgBBox(const std::string& txt)
-//{
-//	const std::string ImgRoot = "D:\\迅雷下载\\inpaint_imgs\\";
-//	const std::string root = "D:\\blue\\data\\训练文件\\检测病灶\\";
-//	const std::string trainImgsRoot = root + "imgs\\";
-//
-//	std::vector<std::vector<cv::Rect2f>> vPtsRects;
-//	std::vector<cv::Rect2f> vImgRects;
-//	std::string relativePath, errorMsg;
-//
-//	if (false == ParseTxtInfo(txt, vPtsRects, vImgRects, relativePath, errorMsg))
-//	{
-//		std::cout << errorMsg << std::endl;
-//		return;
-//	}
-//
-//	std::string img_path = ImgRoot + relativePath;
-//	cv::Mat img = cv::imread(img_path);
-//	if (img.empty())
-//	{
-//		std::cout << "error when open img: " << img_path << std::endl;
-//		return;
-//	}
-//
-//	if (vImgRects.size() == 0)
-//	{
-//		//boost::filesystem::remove(txt);
-//		return;
-//	}
-//
-//	static int img_no = 0;
-//
-//	//auto imgFileName = relativePath.substr(0, relativePath.find_last_of('\\') + 1);
-//	//cv::imwrite(trainImgsRoot + imgFileName, part);
-//
-//	auto fullPath = trainImgsRoot + relativePath;
-//	auto fullRelativePath = fullPath.substr(0, fullPath.find_last_of('\\'));
-//
-//	if (false == boost::filesystem::exists(fullRelativePath))
-//	{
-//		boost::filesystem::create_directories(fullRelativePath);
-//	}
-//
-//	cv::imwrite(fullPath, img);
-//
-//	annotFile << "# " << img_no++ << std::endl;
-//	annotFile << relativePath << std::endl;
-//	annotFile << vImgRects.size() << std::endl;
-//
-//	cv::Size2f r = img.size();
-//
-//	for (const auto& rect : vImgRects)
-//	{
-//		auto bbox = rect;
-//
-//		float radio = 0.0f;
-//
-//		bbox.x = int(bbox.x - bbox.width * radio + 0.5f);
-//		bbox.y = int(bbox.y - bbox.height * radio + 0.5f);
-//		bbox.width = int(bbox.width * (1 + 2 * radio) + 0.5f);
-//		bbox.height = int(bbox.height * (1 + 2 * radio) + 0.5f);
-//
-//		cv::rectangle(img, bbox, cv::Scalar(255, 255, 255), 2);
-//
-//		auto tl = bbox.tl();
-//		auto br = bbox.br();
-//		tl.x = (int)std::max(0.f, std::min(tl.x, r.width));
-//		tl.y = (int)std::max(0.f, std::min(tl.y, r.height));
-//		br.x = (int)std::max(tl.x, std::min(br.x, r.width));
-//		br.y = (int)std::max(tl.y, std::min(br.y, r.height));
-//
-//		annotFile << "1 " << tl.x << " " << tl.y << " " << br.x << " " << br.y << " 0" << std::endl;
-//
-//		/*for (const auto& pt : vPts)
-//		{
-//			cv::circle(img, pt, 5, cv::Scalar(0, 0, 255), 5, -1);
-//		}*/
-//	}
-//
-//	annotFile.flush();
-//
-//	cv::imshow("img", img);
-//	cv::waitKey(1);
-//
-//	//for (const auto& rect : vRects)
-//	//{
-//	//	cv::rectangle(img, rect, cv::Scalar(255, 0, 255), 2);
-//	//}
-//
-//	//if (img.size().width > 1024)
-//	//	cv::resize(img, img, img.size() / 2);
-//
-//	//cv::imshow("img", img);
-//	//cv::waitKey(1000);
-//}
-//
+void ParseTxtForImgBBox(const std::string& txt)
+{
+	//const std::string ImgRoot = "D:\\迅雷下载\\inpaint_imgs\\"; 
+	//const std::string root = "D:\\blue\\data\\训练文件\\检测病灶\\"; 
+	const std::string ImgRoot = "E:\\data\\inpaint_imgs_crimisi\\"; 
+	const std::string root = "E:\\data\\train_files\\detect_lessions\\"; 
+
+
+	const std::string trainingImgsRoot = root + "imgs\\";
+	const std::string trainvalAnnotsFilePath = root + "\\" + "train.txt";
+	const std::string testAnnotsFilePath = root + "\\" + "test.txt";
+
+	Check_Create_Path(root);
+
+	static std::ofstream trainAnnotFile(trainvalAnnotsFilePath);
+	static std::ofstream testAnnotFile(testAnnotsFilePath);
+
+	std::vector<std::vector<cv::Rect2f>> vPtsRects;
+	std::vector<cv::Rect2f> vImgRects, vAddRects;
+	std::string relativePath, errorMsg;
+
+	std::map<std::string, std::string> mAttrs;
+
+	if (false == ParseTxtInfo(txt, vPtsRects, vImgRects, vAddRects, mAttrs, relativePath, errorMsg))
+	{
+		std::cout << errorMsg << std::endl;
+		return;
+	}
+
+	if (vImgRects.size() != 1)
+	{
+		return;
+	}
+
+	std::string img_path = ImgRoot + relativePath;
+	cv::Mat img = cv::imread(img_path);
+	if (img.empty())
+	{
+		std::cout << "error when open img: " << img_path << std::endl;
+		return;
+	}
+
+	static int img_no = 0;
+	static int trainval_img_no = 0;
+	static int test_img_no = 0;
+
+	cv::Rect bbox = vImgRects[0];
+
+	auto fullPath = trainingImgsRoot + relativePath;
+	auto fullRelativePath = fullPath.substr(0, fullPath.find_last_of('\\'));
+
+	if (false == boost::filesystem::exists(fullRelativePath))
+	{
+		boost::filesystem::create_directories(fullRelativePath);
+	}
+
+	cv::imwrite(fullPath, img);
+
+
+	std::vector<cv::Vec4i> all_coords;
+
+	float radio = 0.005f;
+
+	bbox.x = int(bbox.x - bbox.width * radio + 0.5f);
+	bbox.y = int(bbox.y - bbox.height * radio + 0.5f);
+	bbox.width = int(bbox.width * (1 + 2 * radio) + 0.5f);
+	bbox.height = int(bbox.height * (1 + 2 * radio) + 0.5f);
+
+	auto tl = bbox.tl();
+	auto br = bbox.br();
+	tl.x = std::max(0, std::min(tl.x, img.cols));
+	tl.y = std::max(0, std::min(tl.y, img.rows));
+	br.x = std::max(tl.x, std::min(br.x, img.cols));
+	br.y = std::max(tl.y, std::min(br.y, img.rows));
+
+	bbox = cv::Rect(tl.x, tl.y, br.x - tl.x, br.y - tl.y);
+
+	cv::rectangle(img, bbox, cv::Scalar(255, 255, 255));
+
+	auto coords = cv::Vec4i(tl.x, tl.y, br.x, br.y);
+
+	int randNum = std::rand() % 10;
+
+	if (randNum < 8)
+	{
+		trainAnnotFile << "# " << trainval_img_no++ << std::endl;
+		trainAnnotFile << relativePath << std::endl;
+		trainAnnotFile << 1 << std::endl;
+
+		trainAnnotFile << "1 " << coords[0] << " " << coords[1] << " "
+			<< coords[2] << " " << coords[3] << " 0" << std::endl;
+	}
+	else if (vPtsRects.size() == 0 && vAddRects.size() != 0)
+	{
+		testAnnotFile << "# " << test_img_no++ << std::endl;
+		testAnnotFile << relativePath << std::endl;
+		testAnnotFile << 1 << std::endl;
+
+		testAnnotFile << "1 " << coords[0] << " " << coords[1] << " "
+			<< coords[2] << " " << coords[3] << " 0" << std::endl;
+	}
+
+	cv::imshow("img", img);
+	cv::waitKey(1);
+}
+
 
 void ChangeRelativePath(const std::string& txt)
 {
@@ -1259,175 +1268,175 @@ void ShowHistImg(const cv::Mat& img)
 
 	cv::imshow("hist", getHistImg(hist));
 }
-
-void Inpainting_old(const std::string& txt)
-{
-	SYY::HANDLE hHandle, hHandle2;
-	if (SYY::SYY_NO_ERROR != SYY::Inpainting::InitInpaint(hHandle, SYY::Inpainting::PatchMatch))
-	{
-		std::cerr << "InitPaint error!\n" << std::endl;
-		return;
-	}
-	if (SYY::SYY_NO_ERROR != SYY::Inpainting::InitInpaint(hHandle2, SYY::Inpainting::Criminisi_P5))
-	{
-		std::cerr << "InitPaint error!\n" << std::endl;
-		return;
-	}
-
-	const std::string ImgRoot = "D:\\blue\\data\\乳腺癌图片\\";
-	const std::string InpaintImgRoot = "D:\\blue\\data\\训练文件\\inpaint_imgs\\";
-
-	std::vector<std::vector<cv::Point>> vPtss;
-	std::vector<cv::Rect> vRects;
-	std::string relativePath, errorMsg;
-
-	if (false == ParseTxtInfo(txt, vPtss, vRects, relativePath, errorMsg))
-	{
-		std::cout << errorMsg << std::endl;
-		return;
-	}
-
-	std::string img_path = ImgRoot + relativePath;
-	cv::Mat img = cv::imread(img_path);
-	if (img.empty())
-	{
-		std::cout << "error when open img: " << img_path << std::endl;
-		return;
-	}
-
-	cv::Mat inpaintImg;
-	if (vPtss.size() == 0)
-	{
-		inpaintImg = img;
-	}
-	else
-	{
-		auto srcImg = img.clone();
-		cv::Mat element5x5 = cv::getStructuringElement(cv::MORPH_RECT, cv::Size(5, 5));
-		cv::Mat element3x3 = cv::getStructuringElement(cv::MORPH_RECT, cv::Size(3, 3));
-		cv::Mat maskImg = cv::Mat::zeros(img.size(), CV_8UC1);
-		int radius = 20;
-		//if (srcImg.cols > 1000) radius = 15;
-
-		for (auto vPts : vPtss)
-		{
-			for (auto pt : vPts)
-			{
-				auto rect = cv::Rect(pt.x + 1 - radius / 2, pt.y + 1 - radius / 2, radius, radius);
-
-				//auto rect = cv::Rect(pt.x, pt.y, radius, radius);
-
-				maskImg(rect) = 255;
-				srcImg(rect) = cv::Scalar(255, 255, 255);
-				//cv::rectangle(srcImg, rect, cv::Scalar(255, 255, 255));
-
-				//cv::circle(maskImg, pt, radius, cv::Scalar(255), -1);
-
-				auto region = img(rect);
-				//cv::cvtColor(region, region, CV_RGB2GRAY);
-				//cv::morphologyEx(region, region, cv::MORPH_DILATE, element3x3);
-
-				cv::Mat m = maskImg(rect);
-				//cv::Canny(region, m, 0, 255);
-				//cv::threshold(region, m, 0, 255, CV_THRESH_OTSU);
-				//cv::morphologyEx(m, m, cv::MORPH_DILATE, element5x5);
-				//cv::morphologyEx(m, m, cv::MORPH_CLOSE, element);
-				//cv::dilate(m, m, element3x3);
-				//cv::erode(m, m, element3x3);
-
-				//ShowHistImg(region);
-
-				//cv::imshow("region", region);
-				//cv::imshow("m", m);
-				//cv::waitKey();
-
-				//std::vector<cv::Rect> bboxes;
-				//GetContoursBBox(m, bboxes);
-
-				//if (bboxes.size() > 1)
-				//{
-				//	std::sort(bboxes.begin(), bboxes.end(), [](const cv::Rect& a, const cv::Rect& b){
-				//		return a.area() > b.area();
-				//	});
-				//}
-
-				//for (auto bbox : bboxes) cv::rectangle(m, bbox, cv::Scalar(128));
-
-				//int min_len = std::min(1, int(bboxes.size()));
-				//for (int i = 0; i < min_len; i++)
-				//{
-				//	img(rect)(bboxes[i]) = cv::Scalar(255, 255, 255);
-				//	m(bboxes[i]) = 255;
-				//}
-
-				//cv::dilate(m, m, element3x3);
-
-				//cv::imshow("region", region);
-				//cv::imshow("m", m);
-				//cv::imshow("img", img);
-				//cv::imshow("mask", maskImg);
-				//cv::waitKey();
-				//cv::circle(maskImg, pt, radius, cv::Scalar(255), -1);
-				//cv::circle(img, pt, radius, cv::Scalar(255), -1);
-			}
-		}
-
-		//cv::imshow("srcImg", srcImg);
-		//cv::imshow("mask", maskImg);
-		//cv::waitKey();
-
-	//	static SYY::Image inpaint;
-
-	//	for (int i = 0; i < 1; i++)
-	//	{
-	//		SYY::Image
-	//			src((char*)srcImg.data, srcImg.cols, srcImg.rows, srcImg.channels()),
-	//			mask((char*)maskImg.data, maskImg.cols, maskImg.rows, maskImg.channels());
-
-	//		//if (SYY::SYY_NO_ERROR != SYY::Inpainting::ExecuteInpaint(hHandle, src, mask, inpaint))
-	//		//	return;
-
-	//		//inpaintImg = cv::Mat(inpaint.nHeight, inpaint.nWidth, CV_8UC3, inpaint.pData).clone();
-	//		cv::inpaint(srcImg, maskImg, inpaintImg, 5, cv::INPAINT_NS);
-
-	//		//cv::imshow("inpaingImg1", inpaintImg);
-
-	//		src = SYY::Image((char*)inpaintImg.data, inpaintImg.cols, inpaintImg.rows, inpaintImg.channels());
-
-	//		if (SYY::SYY_NO_ERROR != SYY::Inpainting::ExecuteInpaint(hHandle2, src, mask, inpaint))
-	//			return;
-
-	//		inpaintImg = cv::Mat(inpaint.nHeight, inpaint.nWidth, CV_8UC3, inpaint.pData);
-
-	//		srcImg = inpaintImg.clone();
-
-	//		//cv::imshow("inpaingImg2", inpaintImg);
-	//		//cv::waitKey();
-	//		//cv::dilate(maskImg, maskImg, element3x3);
-	//		//cv::imshow("mask", maskImg);
-	//		//cv::imshow("inpaingImg", inpaintImg);
-	//		//cv::waitKey();
-	//	}
-
-		cv::imshow("img", srcImg);
-		cv::imshow("mask", maskImg);
-	//	//cv::imshow("inpaingImg", inpaintImg);
-		cv::waitKey();
-	//	//cv::destroyAllWindows();
-	}
-
-	//std::string inpaint_img_path = InpaintImgRoot + relativePath;
-	//std::string inpaintRelativePath = inpaint_img_path.substr(0, inpaint_img_path.find_last_of('\\'));
-
-	//if (false == boost::filesystem::exists(inpaintRelativePath))
-	//	boost::filesystem::create_directories(inpaintRelativePath);
-
-	//cv::imwrite(inpaint_img_path, inpaintImg);
-
-	SYY::Inpainting::ReleaseInpaint(hHandle);
-	SYY::Inpainting::ReleaseInpaint(hHandle2);
-}
-
+//
+//void Inpainting_old(const std::string& txt)
+//{
+//	SYY::HANDLE hHandle, hHandle2;
+//	if (SYY::SYY_NO_ERROR != SYY::Inpainting::InitInpaint(hHandle, SYY::Inpainting::PatchMatch))
+//	{
+//		std::cerr << "InitPaint error!\n" << std::endl;
+//		return;
+//	}
+//	if (SYY::SYY_NO_ERROR != SYY::Inpainting::InitInpaint(hHandle2, SYY::Inpainting::Criminisi_P5))
+//	{
+//		std::cerr << "InitPaint error!\n" << std::endl;
+//		return;
+//	}
+//
+//	const std::string ImgRoot = "D:\\blue\\data\\乳腺癌图片\\";
+//	const std::string InpaintImgRoot = "D:\\blue\\data\\训练文件\\inpaint_imgs\\";
+//
+//	std::vector<std::vector<cv::Point>> vPtss;
+//	std::vector<cv::Rect> vRects;
+//	std::string relativePath, errorMsg;
+//
+//	if (false == ParseTxtInfo(txt, vPtss, vRects, relativePath, errorMsg))
+//	{
+//		std::cout << errorMsg << std::endl;
+//		return;
+//	}
+//
+//	std::string img_path = ImgRoot + relativePath;
+//	cv::Mat img = cv::imread(img_path);
+//	if (img.empty())
+//	{
+//		std::cout << "error when open img: " << img_path << std::endl;
+//		return;
+//	}
+//
+//	cv::Mat inpaintImg;
+//	if (vPtss.size() == 0)
+//	{
+//		inpaintImg = img;
+//	}
+//	else
+//	{
+//		auto srcImg = img.clone();
+//		cv::Mat element5x5 = cv::getStructuringElement(cv::MORPH_RECT, cv::Size(5, 5));
+//		cv::Mat element3x3 = cv::getStructuringElement(cv::MORPH_RECT, cv::Size(3, 3));
+//		cv::Mat maskImg = cv::Mat::zeros(img.size(), CV_8UC1);
+//		int radius = 20;
+//		//if (srcImg.cols > 1000) radius = 15;
+//
+//		for (auto vPts : vPtss)
+//		{
+//			for (auto pt : vPts)
+//			{
+//				auto rect = cv::Rect(pt.x + 1 - radius / 2, pt.y + 1 - radius / 2, radius, radius);
+//
+//				//auto rect = cv::Rect(pt.x, pt.y, radius, radius);
+//
+//				maskImg(rect) = 255;
+//				srcImg(rect) = cv::Scalar(255, 255, 255);
+//				//cv::rectangle(srcImg, rect, cv::Scalar(255, 255, 255));
+//
+//				//cv::circle(maskImg, pt, radius, cv::Scalar(255), -1);
+//
+//				auto region = img(rect);
+//				//cv::cvtColor(region, region, CV_RGB2GRAY);
+//				//cv::morphologyEx(region, region, cv::MORPH_DILATE, element3x3);
+//
+//				cv::Mat m = maskImg(rect);
+//				//cv::Canny(region, m, 0, 255);
+//				//cv::threshold(region, m, 0, 255, CV_THRESH_OTSU);
+//				//cv::morphologyEx(m, m, cv::MORPH_DILATE, element5x5);
+//				//cv::morphologyEx(m, m, cv::MORPH_CLOSE, element);
+//				//cv::dilate(m, m, element3x3);
+//				//cv::erode(m, m, element3x3);
+//
+//				//ShowHistImg(region);
+//
+//				//cv::imshow("region", region);
+//				//cv::imshow("m", m);
+//				//cv::waitKey();
+//
+//				//std::vector<cv::Rect> bboxes;
+//				//GetContoursBBox(m, bboxes);
+//
+//				//if (bboxes.size() > 1)
+//				//{
+//				//	std::sort(bboxes.begin(), bboxes.end(), [](const cv::Rect& a, const cv::Rect& b){
+//				//		return a.area() > b.area();
+//				//	});
+//				//}
+//
+//				//for (auto bbox : bboxes) cv::rectangle(m, bbox, cv::Scalar(128));
+//
+//				//int min_len = std::min(1, int(bboxes.size()));
+//				//for (int i = 0; i < min_len; i++)
+//				//{
+//				//	img(rect)(bboxes[i]) = cv::Scalar(255, 255, 255);
+//				//	m(bboxes[i]) = 255;
+//				//}
+//
+//				//cv::dilate(m, m, element3x3);
+//
+//				//cv::imshow("region", region);
+//				//cv::imshow("m", m);
+//				//cv::imshow("img", img);
+//				//cv::imshow("mask", maskImg);
+//				//cv::waitKey();
+//				//cv::circle(maskImg, pt, radius, cv::Scalar(255), -1);
+//				//cv::circle(img, pt, radius, cv::Scalar(255), -1);
+//			}
+//		}
+//
+//		//cv::imshow("srcImg", srcImg);
+//		//cv::imshow("mask", maskImg);
+//		//cv::waitKey();
+//
+//	//	static SYY::Image inpaint;
+//
+//	//	for (int i = 0; i < 1; i++)
+//	//	{
+//	//		SYY::Image
+//	//			src((char*)srcImg.data, srcImg.cols, srcImg.rows, srcImg.channels()),
+//	//			mask((char*)maskImg.data, maskImg.cols, maskImg.rows, maskImg.channels());
+//
+//	//		//if (SYY::SYY_NO_ERROR != SYY::Inpainting::ExecuteInpaint(hHandle, src, mask, inpaint))
+//	//		//	return;
+//
+//	//		//inpaintImg = cv::Mat(inpaint.nHeight, inpaint.nWidth, CV_8UC3, inpaint.pData).clone();
+//	//		cv::inpaint(srcImg, maskImg, inpaintImg, 5, cv::INPAINT_NS);
+//
+//	//		//cv::imshow("inpaingImg1", inpaintImg);
+//
+//	//		src = SYY::Image((char*)inpaintImg.data, inpaintImg.cols, inpaintImg.rows, inpaintImg.channels());
+//
+//	//		if (SYY::SYY_NO_ERROR != SYY::Inpainting::ExecuteInpaint(hHandle2, src, mask, inpaint))
+//	//			return;
+//
+//	//		inpaintImg = cv::Mat(inpaint.nHeight, inpaint.nWidth, CV_8UC3, inpaint.pData);
+//
+//	//		srcImg = inpaintImg.clone();
+//
+//	//		//cv::imshow("inpaingImg2", inpaintImg);
+//	//		//cv::waitKey();
+//	//		//cv::dilate(maskImg, maskImg, element3x3);
+//	//		//cv::imshow("mask", maskImg);
+//	//		//cv::imshow("inpaingImg", inpaintImg);
+//	//		//cv::waitKey();
+//	//	}
+//
+//		cv::imshow("img", srcImg);
+//		cv::imshow("mask", maskImg);
+//	//	//cv::imshow("inpaingImg", inpaintImg);
+//		cv::waitKey();
+//	//	//cv::destroyAllWindows();
+//	}
+//
+//	//std::string inpaint_img_path = InpaintImgRoot + relativePath;
+//	//std::string inpaintRelativePath = inpaint_img_path.substr(0, inpaint_img_path.find_last_of('\\'));
+//
+//	//if (false == boost::filesystem::exists(inpaintRelativePath))
+//	//	boost::filesystem::create_directories(inpaintRelativePath);
+//
+//	//cv::imwrite(inpaint_img_path, inpaintImg);
+//
+//	SYY::Inpainting::ReleaseInpaint(hHandle);
+//	SYY::Inpainting::ReleaseInpaint(hHandle2);
+//}
+//
 void ChangeTxtInfo(const std::string& txt)
 {
 	const std::string ImgRoot = "D:\\blue\\data\\乳腺癌图片\\";
@@ -1895,11 +1904,12 @@ void Create_VOC_Annots_With_Filter(const std::string& txt) {
 	using namespace boost::property_tree;
 	ptree pt;
 
-	const std::string ImgRoot = "D:\\blue\\data\\训练文件\\inpaint_imgs_crimisi\\";
-	//const std::string ImgRoot = "D:\\blue\\data\\训练文件\\inpaint_imgs\\";
-
-	const std::string AnnotSaveRoot = "D:\\blue\\data\\训练文件\\ssd\\检测病灶\\annots_v2\\";
-	const std::string ImgSaveRoot = "D:\\blue\\data\\训练文件\\ssd\\检测病灶\\imgs_v2\\";
+	//const std::string ImgRoot = "D:\\blue\\data\\训练文件\\inpaint_imgs_crimisi\\";
+	//const std::string AnnotSaveRoot = "D:\\blue\\data\\训练文件\\ssd\\检测病灶\\annots_v2\\";
+	//const std::string ImgSaveRoot = "D:\\blue\\data\\训练文件\\ssd\\检测病灶\\imgs_v2\\";
+	const std::string ImgRoot = "E:\\data\\inpaint_imgs_crimisi\\";
+	const std::string AnnotSaveRoot = "E:\\data\\train_files\\ssd\\detect_lession\\annots_v2\\";
+	const std::string ImgSaveRoot = "E:\\data\\train_files\\ssd\\detect_lession\\imgs_v2\\";
 
 	const std::string TrainAnnotSaveRoot = AnnotSaveRoot + "train\\";
 	const std::string TrainImgSaveRoot = ImgSaveRoot + "train\\";
@@ -2611,10 +2621,15 @@ void GradingClassify4Lession(const std::string& txt)
 
 void GradingClassify4FullImage(const std::string& txt)
 {
-	const std::string ImgRoot = "D:\\blue\\data\\训练文件\\inpaint_imgs_crimisi\\";
-	const std::string ImgSaveRoot = "D:\\blue\\data\\训练文件\\病灶分级_全图\\";
-	const std::string TrainImgSaveRoot = "D:\\blue\\data\\训练文件\\病灶分级_全图\\train\\";
-	const std::string TestImgSaveRoot = "D:\\blue\\data\\训练文件\\病灶分级_全图\\test\\";
+	//const std::string ImgRoot = "D:\\blue\\data\\训练文件\\inpaint_imgs_crimisi\\";
+	//const std::string ImgSaveRoot = "D:\\blue\\data\\训练文件\\病灶分级_全图\\";
+	//const std::string TrainImgSaveRoot = "D:\\blue\\data\\训练文件\\病灶分级_全图\\train\\";
+	//const std::string TestImgSaveRoot = "D:\\blue\\data\\训练文件\\病灶分级_全图\\test\\";
+
+	const std::string ImgRoot = "E:\\data\\inpaint_imgs_crimisi\\";
+	const std::string ImgSaveRoot = "E:\\data\\train_files\\gc_fullimage\\";
+	const std::string TrainImgSaveRoot = "E:\\data\\train_files\\gc_fullimage\\train\\";
+	const std::string TestImgSaveRoot = "E:\\data\\train_files\\gc_fullimage\\val\\";
 
 	std::vector<std::vector<cv::Rect2f>> vPtsRects;
 	std::vector<cv::Rect2f> vImgRects, vAddRects;
@@ -2689,7 +2704,7 @@ void GradingClassify4FullImage(const std::string& txt)
 		auto img_save_prefix = TrainImgSaveRoot + cls + "\\";
 		Check_Create_Path(img_save_prefix);
 
-		int sampleCount = 10;
+		int sampleCount = 2;
 
 		while (sampleCount-- > 0)
 		{
@@ -2773,205 +2788,17 @@ void AddLessionAttrInfo(const std::string& txt)
 	}
 }
 
-void TestAcc(const std::string& txt)
-{
-	const std::string ImgRoot = "D:\\blue\\data\\乳腺癌图片\\";
-	const std::string InpaintImgRoot = "D:\\blue\\data\\训练文件\\inpaint_imgs_crimisi\\";
-
-	std::vector<std::vector<cv::Rect2f>> vPtsRects;
-	std::vector<cv::Rect2f> vImgRects, vAddRects;
-	std::string relativePath, errorMsg;
-	std::map<std::string, std::string> mAttrs;
-
-	if (false == ParseTxtInfo(txt, vPtsRects, vImgRects, vAddRects, mAttrs, relativePath, errorMsg))
-	{
-		std::cout << errorMsg << std::endl;
-		return;
-	}
-
-	if (vImgRects.size() != 1)
-		return;
-
-	auto cls = relativePath.substr(0, relativePath.find_first_of('\\'));
-
-	//if (cls != "1a类" && vPtsRects.size() != 0) return;
-
-	std::string img_path = ImgRoot + relativePath;
-	std::string inpaint_img_path = InpaintImgRoot + relativePath;
-	cv::Mat origin_img = cv::imread(img_path);
-	if (origin_img.empty())
-	{
-		std::cout << "error when open img: " << img_path << std::endl;
-		return;
-	}
-	cv::Mat inpaint_img = cv::imread(inpaint_img_path);
-	if (inpaint_img.empty())
-	{
-		std::cout << "error when open img: " << inpaint_img_path << std::endl;
-		return;
-	}
-
-	static SYY::MedicalAnalysis::BUAnalysisResult result;
-
-	static int f_f_count = 0;
-	static int f_t_count = 0;
-	static int t_f_count = 0;
-	static int t_count = 0;
-	static int f_count = 0;
-
-	auto img = inpaint_img;
-	if (SYY::SYY_NO_ERROR != SYY::MedicalAnalysis::ExecuteBUAnalysis(
-		hHandleBUAnalysis, (char*)img.data, img.cols, img.rows, &result))
-	{
-		std::cout << "execute BU analysis error!\n";
-		return;
-	}
-
-	if ((vPtsRects.size() == 0 && vAddRects.size() == 0) || cls == "1a类")
-		f_count += 1;
-	else
-		t_count += 1;
-
-	const auto write_img = [&](const std::string& type) 
-	{
-		auto draw = origin_img.clone();
-		cv::Rect r(result.rCropRect.x, result.rCropRect.y, result.rCropRect.w, result.rCropRect.h);
-		cv::putText(draw, result.nGrading == SYY::MedicalAnalysis::LG1a ? "1a" : "other", r.tl(), 1, 1, cv::Scalar(255, 255, 255));
-		cv::rectangle(draw, r, cv::Scalar(255, 255, 255), 1);
-
-		std::stringstream ss;
-		for (int i = 0; i < result.nLessionsCount; i++)
-		{
-			auto lr = result.pLessionRects[i];
-			cv::Rect r(lr.x, lr.y, lr.w, lr.h);
-			cv::rectangle(draw, r, cv::Scalar(255, 255, 255), 1);
-
-			ss.str("");
-			ss.clear();
-
-			ss.width(3);
-			ss << result.pLessionConfidence[i];
-
-			cv::putText(draw, ss.str(), (r.tl() + r.br()) / 2, 1, 1, cv::Scalar(255, 255, 255));
-
-			ss.str("");
-			ss.clear();
-			ss << ((result.pLessionTypes[i] == SYY::MedicalAnalysis::NO_LESSION) ? "non-l" : "lession");
-
-			cv::putText(draw, ss.str(), r.tl(), 1, 1, cv::Scalar(255, 255, 255));
-		}
-
-		for (auto vRects : vPtsRects)
-		{
-			auto rect = GetRect(vRects);
-			cv::rectangle(draw, rect, cv::Scalar(0, 0, 255), 2);
-		}
-		for (auto rect : vAddRects)
-		{
-			cv::rectangle(draw, rect, cv::Scalar(0, 0, 255), 2);
-		}
-
-		const std::string path = type + "\\" + relativePath;
-		auto folder = path.substr(0, path.find_last_of('\\'));
-		Check_Create_Path(folder);
-		cv::imwrite(path, draw);
-	};
-
-	if (result.nLessionsCount == 0 && result.nGrading == SYY::MedicalAnalysis::LG1a)
-	{
-		// to false 
-		// false
-		if ((vPtsRects.size() == 0 && vAddRects.size() == 0) || cls == "1a类")
-			f_f_count += 1;
-
-		// true image
-		if ((vPtsRects.size() > 0 || vAddRects.size() > 0) && cls != "1a类")
-		{
-			t_f_count += 1;
-			write_img("t2f");
-		}
-	}
-	else if (result.nLessionsCount != 0 && result.nGrading == SYY::MedicalAnalysis::LG1a)
-	{
-		bool is_false = true;
-
-		// to true
-		for (int i = 0; i < result.nLessionsCount; i++)
-		{
-			if (result.pLessionConfidence[i] > 0.5f || result.pLessionTypes[i] == SYY::MedicalAnalysis::LESSION)
-			{
-				is_false = false;
-
-				// false image
-				if ((vPtsRects.size() == 0 && vAddRects.size() == 0) || cls == "1a类")
-				{
-					f_t_count += 1;
-					write_img("f2t");
-				}
-
-				break;
-			}
-		}
-
-		// to false
-		if (is_false)
-		{
-			// false image
-			if ((vPtsRects.size() == 0 && vAddRects.size() == 0) || cls == "1a类")
-				f_f_count += 1;
-
-			// true image
-			if ((vPtsRects.size() > 0 || vAddRects.size() > 0) && cls != "1a类")
-			{
-				t_f_count += 1;
-				write_img("t2f");
-			}
-		}
-	}
-	else if (result.nLessionsCount != 0 && result.nGrading == SYY::MedicalAnalysis::LG_OTHER)
-	{
-		// to true
-		if ((vPtsRects.size() == 0 && vAddRects.size() == 0) || cls == "1a类")
-		{
-			f_t_count += 1;
-			write_img("f2t");
-		}
-	}
-	else if (result.nLessionsCount == 0 && result.nGrading == SYY::MedicalAnalysis::LG_OTHER)
-	{
-		// to true
-
-		//if ((vPtsRects.size() == 0 && vAddRects.size() == 0) || cls == "1a类")
-		//{
-		//	f_t_count += 1;
-		//	write_img("f2t");
-		//}
-
-		// true image
-		if ((vPtsRects.size() > 0 || vAddRects.size() > 0) && cls != "1a类")
-		{
-			t_f_count += 1;
-			write_img("t2f");
-		}
-	}
-	else {
-		write_img("other");
-		std::cout << "some thing else!!!\n";
-	}
-
-	std::cout << "false2false: " << (float)f_f_count / (float)f_count<< " (" << f_f_count << ", " << f_count << ")\n";
-	std::cout << "true2false: " << (float)t_f_count / (float)t_count << " (" << t_f_count << ", " << t_count << ")\n";
-	std::cout << "false2true: " << (float)f_t_count / (float)f_count << " (" << f_t_count << ", " << f_count << ")\n";
-
-	write_img("res");
-}
-
 void GetTrueFalseRegion(const std::string& txt)
 {
-	const std::string ImgRoot = "D:\\blue\\data\\训练文件\\inpaint_imgs_crimisi\\";
+	//const std::string ImgRoot = "D:\\blue\\data\\训练文件\\inpaint_imgs_crimisi\\";
 
-	const std::string TrainImgSaveRoot = "D:\\blue\\data\\训练文件\\lession_nonlession\\train\\";
-	const std::string TestImgSaveRoot = "D:\\blue\\data\\训练文件\\lession_nonlession\\val\\";
+	//const std::string TrainImgSaveRoot = "D:\\blue\\data\\训练文件\\lession_nonlession\\train\\";
+	//const std::string TestImgSaveRoot = "D:\\blue\\data\\训练文件\\lession_nonlession\\val\\";
+
+	const std::string ImgRoot = "E:\\data\\inpaint_imgs_crimisi\\";
+
+	const std::string TrainImgSaveRoot = "E:\\data\\train_files\\lession_nonlession\\train\\";
+	const std::string TestImgSaveRoot = "E:\\data\\train_files\\lession_nonlession\\val\\";
 
 	std::vector<std::vector<cv::Rect2f>> vPtsRects;
 	std::vector<cv::Rect2f> vImgRects, vAddRects;
@@ -3120,6 +2947,351 @@ void GetTrueFalseRegion(const std::string& txt)
 	}
 }
 
+enum JustifyType { F2T, F2F, T2F, T2T, Other, Err};
+
+JustifyType Justify(const std::string& txt, float thr, int& t_count, int& f_count, 
+	cv::Mat& origin_img, SYY::MedicalAnalysis::BUAnalysisResult& result,
+	std::vector<std::vector<cv::Rect2f>>& vPtsRects, std::vector<cv::Rect2f>& vAddRects,
+	std::string& relativePath
+	)
+{
+	//const std::string ImgRoot = "D:\\blue\\data\\乳腺癌图片\\";
+	//const std::string InpaintImgRoot = "D:\\blue\\data\\训练文件\\inpaint_imgs_crimisi\\";
+
+	const std::string ImgRoot = "E:\\data\\乳腺癌图片\\";
+	const std::string InpaintImgRoot = "E:\\data\\乳腺癌图片\\";
+	//const std::string InpaintImgRoot = "E:\\data\\inpaint_imgs_crimisi\\";
+
+	//std::vector<std::vector<cv::Rect2f>> vPtsRects;
+	//std::vector<cv::Rect2f> vImgRects, vAddRects;
+	std::vector<cv::Rect2f> vImgRects;
+	//std::string relativePath, errorMsg;
+	std::string errorMsg;
+
+	std::map<std::string, std::string> mAttrs;
+
+	if (false == ParseTxtInfo(txt, vPtsRects, vImgRects, vAddRects, mAttrs, relativePath, errorMsg))
+	{
+		std::cout << errorMsg << std::endl;
+		return Err;
+	}
+
+	if (vImgRects.size() != 1)
+		return Err;
+
+	auto cls = relativePath.substr(0, relativePath.find_first_of('\\'));
+
+	//if (cls != "1a类" && (vPtsRects.size() != 0 || vAddRects.size() != 0)) return Err;
+	//if (cls != "1a类" && vPtsRects.size() != 0 ) return Err;
+
+	std::vector<int>::size_type idx = 1;
+
+	std::string img_path = ImgRoot + relativePath;
+	std::string inpaint_img_path = InpaintImgRoot + relativePath;
+	origin_img = cv::imread(img_path);
+	if (origin_img.empty())
+	{
+		std::cout << "error when open img: " << img_path << std::endl;
+		return Err;
+	}
+	cv::Mat inpaint_img = cv::imread(inpaint_img_path);
+	if (inpaint_img.empty())
+	{
+		std::cout << "error when open img: " << inpaint_img_path << std::endl;
+		return Err;
+	}
+
+	//static SYY::MedicalAnalysis::BUAnalysisResult result;
+
+	auto img = inpaint_img;
+	if (SYY::SYY_NO_ERROR != SYY::MedicalAnalysis::ExecuteBUAnalysis(
+		hHandleBUAnalysis, (char*)img.data, img.cols, img.rows, &result))
+	{
+		std::cout << "execute BU analysis error!\n";
+		return Err;
+	}
+
+	if ((vPtsRects.size() == 0 && vAddRects.size() == 0) || cls == "1a类")
+		f_count += 1;
+	else
+		t_count += 1;
+
+	if (result.nLessionsCount == 0 && result.nGrading == SYY::MedicalAnalysis::LG1a)
+	{
+		// to false 
+		// false
+		if ((vPtsRects.size() == 0 && vAddRects.size() == 0) || cls == "1a类")
+		{
+			return JustifyType::F2F;
+		}
+
+		// true image
+		if ((vPtsRects.size() > 0 || vAddRects.size() > 0) && cls != "1a类")
+		{
+			return JustifyType::T2F;
+		}
+	}
+	else if (result.nLessionsCount != 0 && result.nGrading == SYY::MedicalAnalysis::LG1a)
+	{
+		bool is_false = true;
+
+		// to true
+		for (int i = 0; i < result.nLessionsCount; i++)
+		{
+			if (result.pLessionConfidence[i] > thr || result.pLessionTypes[i] == SYY::MedicalAnalysis::LESSION)
+			//if (result.pLessionConfidence[i] > thr)
+			{
+				is_false = false;
+
+				// false image
+				if ((vPtsRects.size() == 0 && vAddRects.size() == 0) || cls == "1a类")
+				{
+					return JustifyType::F2T;
+				}
+
+				break;
+			}
+		}
+
+		// to false
+		if (is_false)
+		{
+			// false image
+			if ((vPtsRects.size() == 0 && vAddRects.size() == 0) || cls == "1a类")
+			{
+				return F2F;
+			}
+
+			// true image
+			if ((vPtsRects.size() > 0 || vAddRects.size() > 0) && cls != "1a类")
+			{
+				return T2F;
+			}
+		}
+	}
+	else if (result.nLessionsCount != 0 && result.nGrading == SYY::MedicalAnalysis::LG_OTHER)
+	{
+		// to true
+		if ((vPtsRects.size() == 0 && vAddRects.size() == 0) || cls == "1a类")
+		{
+			return F2T;
+		}
+	}
+	else if (result.nLessionsCount == 0 && result.nGrading == SYY::MedicalAnalysis::LG_OTHER)
+	{
+		// to true
+
+		if ((vPtsRects.size() == 0 && vAddRects.size() == 0) || cls == "1a类")
+		{
+			//f_t_count += 1;
+			//write_img("f2t");
+			return F2T;
+		}
+
+		//// true image
+		//if ((vPtsRects.size() > 0 || vAddRects.size() > 0) && cls != "1a类")
+		//{
+		//	return T2F;
+		//}
+	}
+	else {
+		return Other;
+		std::cout << "some thing else!!!\n";
+	}
+
+	return Other;
+}
+
+void CalTestCount(const std::string& txt, float thr, int& f_f_count, int& f_t_count, int& t_f_count, int& t_count, int& f_count) {
+	std::vector<std::vector<cv::Rect2f>> vPtsRects;
+	std::vector<cv::Rect2f> vAddRects;
+	std::string relativePath;
+	cv::Mat origin_img;
+	static SYY::MedicalAnalysis::BUAnalysisResult result;
+
+	auto type = Justify(txt, thr, t_count, f_count, origin_img, result, vPtsRects, vAddRects, relativePath);
+
+	switch (type)
+	{
+	case F2T:
+		f_t_count += 1;
+		break;
+	case F2F:
+		f_f_count += 1;
+		break;
+	case T2F:
+		boost::filesystem::remove(txt);
+		t_f_count += 1;
+		break;
+	case T2T:
+		break;
+	case Other:
+	case Err:
+		break;
+	}
+}
+
+void TestAcc(const std::string& txt)
+{
+	static int f_f_count = 0;
+	static int f_t_count = 0;
+	static int t_f_count = 0;
+	static int t_count = 0;
+	static int f_count = 0;
+
+	std::vector<std::vector<cv::Rect2f>> vPtsRects;
+	std::vector<cv::Rect2f> vAddRects;
+	std::string relativePath;
+	cv::Mat origin_img;
+	static SYY::MedicalAnalysis::BUAnalysisResult result;
+
+	auto type = Justify(txt, 0.1f, t_count, f_count, origin_img, result, vPtsRects, vAddRects, relativePath);
+
+	const auto write_img = [&](const std::string& type) 
+	{
+		auto draw = origin_img.clone();
+		cv::Rect r(result.rCropRect.x, result.rCropRect.y, result.rCropRect.w, result.rCropRect.h);
+		cv::putText(draw, result.nGrading == SYY::MedicalAnalysis::LG1a ? "1a" : "other", r.tl(), 1, 1, cv::Scalar(255, 255, 255));
+		cv::rectangle(draw, r, cv::Scalar(255, 255, 255), 1);
+
+		std::stringstream ss;
+		for (int i = 0; i < result.nLessionsCount; i++)
+		{
+			auto lr = result.pLessionRects[i];
+			cv::Rect r(lr.x, lr.y, lr.w, lr.h);
+			cv::rectangle(draw, r, cv::Scalar(255, 255, 255), 1);
+
+			ss.str("");
+			ss.clear();
+
+			ss.width(3);
+			ss << result.pLessionConfidence[i];
+
+			cv::putText(draw, ss.str(), (r.tl() + r.br()) / 2, 1, 1, cv::Scalar(255, 255, 255));
+
+			ss.str("");
+			ss.clear();
+			ss << ((result.pLessionTypes[i] == SYY::MedicalAnalysis::NO_LESSION) ? "non-l" : "lession");
+
+			cv::putText(draw, ss.str(), r.tl(), 1, 1, cv::Scalar(255, 255, 255));
+		}
+
+		for (auto vRects : vPtsRects)
+		{
+			auto rect = GetRect(vRects);
+			cv::rectangle(draw, rect, cv::Scalar(0, 0, 255), 2);
+		}
+		for (auto rect : vAddRects)
+		{
+			cv::rectangle(draw, rect, cv::Scalar(0, 0, 255), 2);
+		}
+
+		const std::string path = type + "\\" + relativePath;
+		auto folder = path.substr(0, path.find_last_of('\\'));
+		Check_Create_Path(folder);
+		cv::imwrite(path, draw);
+	};
+
+	switch (type)
+	{
+	case F2T:
+		f_t_count += 1;
+		write_img("f2t");
+		break;
+	case F2F:
+		f_f_count += 1;
+		break;
+	case T2F:
+		t_f_count += 1;
+		write_img("t2f");
+		break;
+	case T2T:
+		break;
+	case Other:
+		write_img("other");
+		break;
+	}
+
+	std::cout << "false2false: " << (float)f_f_count / (float)f_count<< " (" << f_f_count << ", " << f_count << ")\n";
+	std::cout << "true2false: " << (float)t_f_count / (float)t_count << " (" << t_f_count << ", " << t_count << ")\n";
+	std::cout << "false2true: " << (float)f_t_count / (float)f_count << " (" << f_t_count << ", " << f_count << ")\n";
+
+	write_img("res");
+}
+
+struct Scores {
+	float f2t_ratio = 1.0f;
+	float f2f_ratio = 0.0f;
+	float t2f_ratio = 1.0f;
+};
+
+typedef std::pair<float, Scores> thr2scores;
+
+void AutoGetThreshold() {
+	const std::string txtRectFolder = "E:\\data\\RectTxt\\";
+
+	std::vector<std::string> files;
+	scanFilesUseRecursive(txtRectFolder, files);
+
+	std::random_shuffle(files.begin(), files.end());
+
+	const float thr_step = 0.05f;
+
+	std::vector<thr2scores> vThr2scores;
+
+	for (float thr = 0.2f; thr < 0.81f; thr += thr_step)
+	{
+		thr2scores t2s;
+		t2s.first = thr;
+		int ff_c = 0, ft_c = 0, tf_c = 0, t_c = 0, f_c = 0;
+
+		std::cout << "thr: " << thr << std::endl;
+		int file_count = files.size();
+		for (int i = 0; i < files.size(); i++)
+		{
+			auto file = files[i];
+			CalTestCount(file, thr, ff_c, ft_c, tf_c, t_c, f_c);
+
+			t2s.second.f2t_ratio = (float)ft_c / (float)f_c;
+			t2s.second.f2f_ratio = (float)ff_c / (float)f_c;
+			t2s.second.t2f_ratio = (float)tf_c / (float)t_c;
+
+			// std::cout << "\rprocessing: (" << i << ", " << file_count << ")" << "\tf2t: " << t2s.second.f2t_ratio << "\tf2f: " << t2s.second.f2f_ratio << "\tt2f: " << t2s.second.t2f_ratio;
+			std::cout << "\rprocessing: (" << f_c + t_c << ")" << "\tf2t: " << t2s.second.f2t_ratio << "\tf2f: " << t2s.second.f2f_ratio << "\tt2f: " << t2s.second.t2f_ratio;
+
+			std::cout.flush();
+		}
+		std::cout << std::endl;
+
+		vThr2scores.push_back(t2s);
+	}
+
+	std::sort(vThr2scores.begin(), vThr2scores.end(), [](thr2scores a, thr2scores b){
+		auto as = a.second;
+		auto bs = b.second;
+
+		if (as.t2f_ratio < bs.t2f_ratio)
+			return true;
+		else if (as.t2f_ratio > bs.t2f_ratio)
+			return false;
+		else if (as.f2f_ratio > bs.f2f_ratio)
+			return true;
+		else
+			return false;
+	});
+
+	std::ofstream out("result.txt");
+
+	for (auto t2s : vThr2scores)
+	{
+		out << "thr: " << t2s.first << "\n";
+		out << "t2f: " << t2s.second.t2f_ratio << "\n";
+		out << "f2t: " << t2s.second.f2t_ratio << "\n";
+		out << "f2f: " << t2s.second.f2f_ratio << "\n";
+		out << "\n";
+	}
+}
+
 void main(int argc, char** argv)
 {
 	if (SYY::SYY_NO_ERROR != SYY::InitSDK())
@@ -3128,7 +3300,7 @@ void main(int argc, char** argv)
 		return;
 	}
 
-	if (SYY::SYY_NO_ERROR != SYY::MedicalAnalysis::InitBUAnalysis(hHandleBUAnalysis, SYY::MedicalAnalysis::Crop_V2 | SYY::MedicalAnalysis::DetectAccurate))
+	if (SYY::SYY_NO_ERROR != SYY::MedicalAnalysis::InitBUAnalysisWithMode(hHandleBUAnalysis, SYY::MedicalAnalysis::Crop_V2 | SYY::MedicalAnalysis::DetectAccurate))
 	{
 		std::cerr << "InitBUAnalysis error!\n" << std::endl;
 		return;
@@ -3142,10 +3314,12 @@ void main(int argc, char** argv)
 
 	//argc = 2;
 	//argv[1] = "D:\\blue\\codes\\TagTools\\x64\\标注工具\\RectTxt\\";
+	//argv[1] = "E:\\data\\RectTxt\\";
 	//ProcessAllFile(argc, argv, ParseTxt);
 
 	//argc = 2;
-	//argv[1] = (char*)std::string("D:\\blue\\data\\训练文件\\" + Phase + "\\").c_str();
+	////argv[1] = "D:\\blue\\codes\\TagTools\\x64\\标注工具\\RectTxt\\";
+	//argv[1] = "E:\\data\\RectTxt\\";
 	//ProcessAllFile(argc, argv, ParseTxtForImgBBox);
 
 	//argc = 2;
@@ -3195,6 +3369,7 @@ void main(int argc, char** argv)
 
 	//argc = 2;
 	//argv[1] = "D:\\blue\\codes\\TagTools\\x64\\标注工具\\RectTxt\\";
+	//argv[1] = "E:\\data\\RectTxt\\";
 	//ProcessAllFile(argc, argv, Create_VOC_Annots_With_Filter);
 
 	//argc = 2;
@@ -3211,20 +3386,25 @@ void main(int argc, char** argv)
 
 	//argc = 2;
 	//argv[1] = "D:\\blue\\codes\\TagTools\\x64\\标注工具\\RectTxt\\";
+	//argv[1] = "E:\\data\\RectTxt\\";
 	//ProcessAllFile(argc, argv, GradingClassify4FullImage);
+
 
 	//argc = 2;
 	////argv[1] = "D:\\blue\\codes\\TagTools\\x64\\标注工具\\RectTxt\\";
 	//argv[1] = "D:\\blue\\codes\\TagTools\\x64\\旧标注工具\\RectTxt\\";
 	//ProcessAllFile(argc, argv, AddLessionAttrInfo);
 
-	argc = 2;
-	argv[1] = "D:\\blue\\codes\\TagTools\\x64\\标注工具\\RectTxt\\";
-	ProcessAllFile(argc, argv, TestAcc, 0, true);
-
 	//argc = 2;
+	//argv[1] = "E:\\data\\RectTxt\\";
+	//ProcessAllFile(argc, argv, TestAcc, 0, true);
+
+	argc = 2;
 	//argv[1] = "D:\\blue\\codes\\TagTools\\x64\\标注工具\\RectTxt\\";
-	//ProcessAllFile(argc, argv, GetTrueFalseRegion);
+	argv[1] = "E:\\data\\RectTxt\\";
+	ProcessAllFile(argc, argv, GetTrueFalseRegion);
+
+	//AutoGetThreshold();
 
 	//cv::Mat m = cv::Mat::zeros(3, 3, CV_8UC1);
 	//cv::Mat h, v;

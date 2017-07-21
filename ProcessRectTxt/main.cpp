@@ -3239,7 +3239,7 @@ void AutoGetThreshold() {
 
 	std::vector<thr2scores> vThr2scores;
 
-	for (float thr = 0.2f; thr < 0.81f; thr += thr_step)
+	for (float thr = 0.2f; thr < 0.51f; thr += thr_step)
 	{
 		thr2scores t2s;
 		t2s.first = thr;
